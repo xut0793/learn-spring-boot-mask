@@ -130,51 +130,60 @@ mask-tutorial/
 
 ### [第 4 章 从一个 if-else 到策略模式](04-strategy-pattern-engine.md)
 
-- 4.1 反面教材：`if (type == PHONE) ... else if ...` 为什么会腐烂
-- 4.2 策略接口只需 4 个方法：`type()` / `code()` / `mask()` / `alreadyMasked()`
-- 4.3 为什么要有第 4 个方法 `alreadyMasked`（伏笔，第 6 章揭晓）
-- 4.4 通用能力下沉：`keepPrefix + maskChar 填充 + keepSuffix`
-- 4.5 `AbstractKeepMaskStrategy` + 四个内置策略几乎零代码
-- 4.6 特例：邮箱为什么不能继承基类（要保留 `@domain`）
-- 4.7 策略注册表：按 code 索引、大小写归一、未命中回落 `CUSTOM`
-- 4.8 扩展实战：加一个快递单号策略，**不改枚举、不改 starter**，只加一个 `@Component`
+- 4.1 反面教材：先把 `if-else` 的腐烂过程演一遍
+- 4.2 策略模式在这里长什么样
+- 4.3 策略接口只需 4 个方法：`type()` / `code()` / `mask()` / `alreadyMasked()`
+- 4.4 为什么要有第 4 个方法 `alreadyMasked`（伏笔，第 6 章揭晓）
+- 4.5 通用能力下沉：`MaskUtils.keepMask` + `alreadyKeepMasked`
+- 4.6 `AbstractKeepMaskStrategy` + 四个内置策略几乎零代码
+- 4.7 特例：邮箱为什么不能继承基类（要保留 `@domain`）
+- 4.8 策略注册表：按 code 索引、大小写归一、未命中回落 `CUSTOM`
+- 4.9 扩展实战：加一个快递单号策略，**不改枚举、不改 starter**
+- 4.10 / 4.11 验证与对照真实实现（`MaskRule` 教程版保持不可变）
 
 ### [第 5 章 谁能看明文：角色上下文](05-role-context.md)
 
-- 5.1 三种角色：ADMIN 旁路 / USER 始终脱敏 / CS 可申请还原
-- 5.2 角色解析的健壮性：去 `ROLE_` 前缀、大小写不敏感、`CUSTOMER_SERVICE` 视作 `CS`
-- 5.3 两条来源与优先级：调试 Header > Spring Security
-- 5.4 `catch (NoClassDefFoundError)` 这个「奇怪」的写法——为什么它让 Security 成为可选依赖
-- 5.5 ThreadLocal 与过滤器：**为什么 `finally` 里必须 `remove`**，附一个线程池串角色的事故复盘
-- 5.6 生产环境必须关闭 Header 覆盖
+- 5.1 策略模式解决不了的那个维度：同一份数据对不同角色呈现不同结果
+- 5.2 三种角色，不是三个等级：ADMIN 旁路 / USER 始终脱敏 / CS 可申请还原
+- 5.3 角色解析的健壮性：去 `ROLE_` 前缀、大小写不敏感、空白与未知值
+- 5.4 两条来源与优先级：调试 Header > Spring Security
+- 5.5 `shouldBypass()` 与 `canUnmask()` 两个判定
+- 5.6 `catch (NoClassDefFoundError)` —— 为什么它让 Security 成为可选依赖
+- 5.7 ThreadLocal 与过滤器：**为什么 `finally` 里必须 `remove`**，附一个会泄漏的反例
+- 5.8 生产环境必须关闭 Header 覆盖
 
-### [第 6 章 MaskEngine：把所有决策收拢到一个方法](06-mask-engine.md)
+### [第 6 章 唯一入口：MaskEngine 的八步判定链](06-mask-engine.md)
 
 - 6.1 为什么需要一个「唯一入口」：四个通道不能各写一套逻辑
-- 6.2 逐行读 `apply()` 的判定链（含流程图）：
-  空值/总开关 → 角色旁路 → 策略与规则查找 → 幂等跳过 → 缓存命中 → 执行脱敏 → 写缓存 → 异常计数
-- 6.3 判定顺序本身就是设计：便宜的判断放前面
-- 6.4 `MaskAction` 四态如何变成可观测的指标标签
-- 6.5 幂等跳过的价值：多通道叠加时不会打成 `138*********`
-- 6.6 为什么 `AlreadyMaskedDetector` 这么「薄」——判定下沉到各策略自己
+- 6.2 引擎只依赖三个窄接口：`MaskSettings` / `MaskResultCache` / `MaskRecorder`
+- 6.3 `MaskAction` 四态如何变成可观测、可断言的标签
+- 6.4 动手写 `apply()` 的八步判定链
+- 6.5 / 6.6 判定顺序本身就是设计：便宜的判断放前面，幂等在缓存之前
+- 6.7 类型编码的解析与回落
+- 6.8 异常处理：为什么安全组件不能吞异常
+- 6.9 一个值得质疑的抽象：`AlreadyMaskedDetector`
 
-### [第 7 章 配置化与热更新](07-configuration-and-hot-reload.md)
+### [第 7 章 规则外部化与热更新](07-configuration-and-hot-reload.md)
 
 - 7.1 硬编码规则的问题：改个「保留后 4 位」要重新发版
-- 7.2 `@ConfigurationProperties` 全景：`enabled` / `channels` / `bypass-roles` / `cache` / `debug` / `reversible` / `rules`
-- 7.3 规则查找的三级回落：自定义 extras → 内置枚举 → 动态创建
-- 7.4 `map-keys` / `extra-map-keys`：没有注解也能按字段名脱敏
-- 7.5 热更新怎么做到免重启：改内存配置 + 版本号自增 + 清缓存
-- 7.6 **缓存 key 为什么要带 ruleVersion**：规则一变旧结果自动失效，比手动清缓存可靠
+- 7.2 `@ConfigurationProperties` 绑定：可变的 `RuleConfig` JavaBean
+- 7.3 第一个坑：`MaskRule` 是 record，绑不进来
+- 7.4 规则表结构：具名字段 + `extras` Map
+- 7.5 **核心设计：可变容器 + 不可变快照**（`volatile` 替换整张表）
+- 7.6 规则版本号：用不变量代替清理动作
+- 7.7 热更新的四步顺序，以及 `maskChar` / `enabled` 覆盖的一个真实 bug
+- 7.8 为什么逻辑放在 Service 而不是 Controller
 
-### [第 8 章 缓存与指标：让脱敏不成为瓶颈](08-cache-and-metrics.md)
+### [第 8 章 缓存与指标：把 NO_OP 换成真东西](08-cache-and-metrics.md)
 
-- 8.1 脱敏到底慢在哪：字符串拼接、反射、正则
-- 8.2 Caffeine 上手：`maxSize` / `expireAfterAccess`
-- 8.3 什么能缓存、什么绝不能缓存（可逆加密用随机 IV，缓存即错误）
-- 8.4 缓存 key 的安全考量：明文进了内存缓存，风险边界在哪
-- 8.5 Micrometer 打点：`masking.invoke{type,role,result}` + `duration` + `fail` / `bypass` / `skipped`
-- 8.6 从 `/actuator/metrics` 与 `/actuator/prometheus` 读出四个业务问题的答案
+- 8.1 第 6 章留下的两个 `NO_OP`，以及两个还没回答的问题
+- 8.2 Caffeine 缓存：key 的三部分（`版本号:类型:明文`）、方向绝不能反、**可注入 `Ticker` 才能测过期**、为什么用 `expireAfterAccess`
+- 8.3 Micrometer 打点：五个指标、为什么 `duration` 刻意不带 `result` 标签、标签绝不能放高基数值、`result` 小写这个坑
+- 8.4 缓存自身的指标：三个 Gauge 怎么一起看，回答「配得对不对」
+- 8.5 **实测：缓存让内置策略变慢了**——即使 100% 命中也是负收益，因为 `keepMask` 本身太便宜
+- 8.6 **实测：Micrometer 打点约 900ns，是脱敏本身的 2.4 倍**——但优化实现，而不是关掉它
+- 8.7 验证：第 4~8 章全部零件组装成一条真链路
+- 8.8 对照真实实现：`recordStats()` 没开，导致「缓存值不值」在生产上无法验证
 
 ## 第三部分 · 实战篇：四个通道逐个手写
 
@@ -309,10 +318,10 @@ mask-tutorial/
 | 数据流总览：从 DB 到 HTTP 响应与日志 | 2.1 |
 | 四个切入点在数据流上的位置 | 2.2 |
 | 出口通道 vs 突变通道的对象状态变化 | 2.3 |
-| 策略注册与查找（含回落 CUSTOM） | 4.7 |
-| 角色解析优先级判定 | 5.3 |
-| `MaskEngine.apply` 完整判定链流程图 | 6.2 |
-| 缓存 key 与 ruleVersion 的关系、热更新时序 | 7.5 |
+| 策略注册与查找（含回落 CUSTOM） | 4.8 |
+| 角色解析优先级判定 | 5.4 |
+| `MaskEngine.apply` 完整判定链流程图 | 6.4 |
+| 缓存 key 与 ruleVersion 的关系、热更新时序 | 7.6 |
 | Jackson `createContextual` 时序图 | 9.4 |
 | Logback 日志转换链 | 10.2 |
 | MyBatis 结果映射时序 | 11.1 |
@@ -323,10 +332,9 @@ mask-tutorial/
 
 - [x] `README.md` 索引与大纲
 - [x] 第一批：第 1~3 章（认知 + 跑起来）
-- [ ] 第二批：第 4~8 章（引擎内核，代码量最大）
+- [x] 第二批：第 4~8 章（引擎内核 + `mask-tutorial/` 第 4~8 章代码，160 个测试全绿）
 - [ ] 第三批：第 9~13 章（四通道 + 协同）
 - [ ] 第四批：第 14~18 章 + 四个附录
-- [ ] `mask-tutorial/` 模块骨架与各章代码
 
 ## 参考资料
 
