@@ -197,12 +197,13 @@ mask-tutorial/
 - 9.6 复杂结构：嵌套对象、`List<T>`、`Map`（递归序列化器 + 包装类型）
 - 9.7 Jackson 拿不到 Spring Bean 的难题，与「静态桥」这个折中方案
 - 9.8 优缺点：集中管理、不改内存对象 / 管不到内部服务调用
+- 9.9 / 9.10 验证与对照真实实现（`@Bean` 序列化器基本没用、静态桥 fail-open）
 
 ### [第 10 章 通道二 · Logback 日志脱敏（最容易被忽视的泄漏口）](10-channel-logback.md)
 
 - 10.1 为什么接口脱敏挡不住 `log.info("phone={}", user.getPhone())`
 - 10.2 `ClassicConverter` 与 `%msg` 的关系，自定义 `%sensitiveMsg`
-- 10.3 正则识别四类敏感数据，以及**为什么 EMAIL 必须排在 BANK_CARD 之前**
+- 10.3 正则识别四类敏感数据，以及**为什么 ID_CARD 和 EMAIL 都必须排在 BANK_CARD 之前**
 - 10.4 注册链路：starter 的 `masking-converter.xml` → 业务的 `logback-spring.xml`
 - 10.5 用 `ListAppender` 断言「日志里不出现明文」
 - 10.6 优缺点：无侵入、覆盖全部日志 / 正则有误伤和漏判、有性能成本
@@ -220,7 +221,7 @@ mask-tutorial/
 
 - 12.1 `@SensitiveMethod` 切点与 `@Around` 环绕通知
 - 12.2 反射递归改写内存对象：Bean 字段、Collection、数组、Map 各怎么处理
-- 12.3 三个必须处理的工程细节：`IdentityHashMap` 防循环引用、跳过 JDK / 框架包、遍历父类字段
+- 12.3 三个必须处理的工程细节：`IdentityHashMap` 防循环引用、**先处理 Collection/Map 再 skip JDK 包**、遍历父类字段
 - 12.4 突变语义的后果演示：改过的对象再走一次 Jackson 会怎样
 - 12.5 优缺点：不依赖 HTTP、适合 RPC 与内部服务 / 改内存、反射有成本
 
@@ -333,7 +334,7 @@ mask-tutorial/
 - [x] `README.md` 索引与大纲
 - [x] 第一批：第 1~3 章（认知 + 跑起来）
 - [x] 第二批：第 4~8 章（引擎内核 + `mask-tutorial/` 第 4~8 章代码，160 个测试全绿）
-- [ ] 第三批：第 9~13 章（四通道 + 协同）
+- [x] 第三批：第 9~13 章（四通道 + 协同）
 - [ ] 第四批：第 14~18 章 + 四个附录
 
 ## 参考资料

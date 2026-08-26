@@ -307,10 +307,10 @@ class MaskEngineTest {
         void codeWinsOverType() {
             authenticateAs("dave", "ROLE_USER");
             registry.register(new ExpressNoMaskStrategy());
-            settings.put(ExpressNoMaskStrategy.CODE, MaskRule.of(2, 4));
+            settings.put(ExpressNoMaskStrategy.EXPRESS, MaskRule.of(2, 4));
 
             String result = engine.apply("SF1234567890123", SensitiveType.CUSTOM,
-                    ExpressNoMaskStrategy.CODE, context);
+                    ExpressNoMaskStrategy.EXPRESS, context);
 
             assertThat(result).isEqualTo("SF12*******0123");
             assertThat(recorder.last().typeCode()).isEqualTo("EXPRESS");
@@ -330,7 +330,7 @@ class MaskEngineTest {
         void codeIsNormalized() {
             authenticateAs("dave", "ROLE_USER");
             registry.register(new ExpressNoMaskStrategy());
-            settings.put(ExpressNoMaskStrategy.CODE, MaskRule.of(2, 4));
+            settings.put(ExpressNoMaskStrategy.EXPRESS, MaskRule.of(2, 4));
 
             assertThat(engine.apply("SF1234567890123", null, "express", context))
                     .isEqualTo("SF12*******0123");

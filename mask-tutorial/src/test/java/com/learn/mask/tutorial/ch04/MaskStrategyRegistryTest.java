@@ -39,7 +39,7 @@ class MaskStrategyRegistryTest {
         MaskStrategyRegistry registry = MaskStrategyRegistry.withBuiltins();
         registry.register(new ExpressNoMaskStrategy());
 
-        assertThat(registry.get(ExpressNoMaskStrategy.CODE)).isInstanceOf(ExpressNoMaskStrategy.class);
+        assertThat(registry.get(ExpressNoMaskStrategy.EXPRESS)).isInstanceOf(ExpressNoMaskStrategy.class);
         // 内置类型不受影响：自定义策略的 type() 是 CUSTOM，但它占的是 EXPRESS 这个坑位
         assertThat(registry.get(SensitiveType.CUSTOM)).isInstanceOf(CustomPatternMaskStrategy.class);
     }

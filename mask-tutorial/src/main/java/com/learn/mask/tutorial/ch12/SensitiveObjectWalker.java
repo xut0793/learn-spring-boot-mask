@@ -1,0 +1,127 @@
+package com.learn.mask.tutorial.ch12;
+
+import com.learn.mask.tutorial.ch05.MaskContext;
+import com.learn.mask.tutorial.ch06.MaskEngine;
+import com.learn.mask.tutorial.ch07.MaskingProperties;
+import com.learn.mask.tutorial.ch09.Sensitive;
+
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.Collection;
+import java.util.IdentityHashMap;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * 递归遍历返回对象，对带 {@link Sensitive} 的字符串字段<strong>就地</strong>打星。
+ * <p>
+ * 这是突变通道：调用返回后，调用方拿到的对象里已经没有明文。
+ * 三个工程细节见第 12.3 节：{@link IdentityHashMap} 防循环引用、跳过 JDK / 框架包、遍历父类字段。
+ */
+public class SensitiveObjectWalker {
+
+    private static final Set<String> SKIP_PACKAGES = Set.of(
+            "java.", "javax.", "jakarta.", "tools.jackson.", "com.fasterxml.");
+
+    private final MaskEngine engine;
+    private final MaskingProperties properties;
+    private final MaskContext maskContext;
+
+    public SensitiveObjectWalker(MaskEngine engine, MaskingProperties properties, MaskContext maskContext) {
+        this.engine = engine;
+        this.properties = properties;
+        this.maskContext = maskContext;
+    }
+
+    public Object mask(Object target) {
+        walk(target, new IdentityHashMap<>());
+        return target;
+    }
+
+    private void walk(Object target, IdentityHashMap<Object, Boolean> seen) {
+        if (target == null || seen.containsKey(target)) {
+            return;
+        }
+        // Collection / Map / 数组必须在 shouldSkip 之前处理：
+        // ArrayList、LinkedHashMap 都在 java.util 下，先 skip 会让嵌套 List/Map 整棵子树失效。
+        if (target instanceof Collection<?> collection) {
+            seen.put(target, Boolean.TRUE);
+            for (Object item : collection) {
+                walk(item, seen);
+            }
+            return;
+        }
+        if (target.getClass().isArray()) {
+            seen.put(target, Boolean.TRUE);
+            int length = Array.getLength(target);
+            for (int i = 0; i < length; i++) {
+                walk(Array.get(target, i), seen);
+            }
+            return;
+        }
+        if (target instanceof Map<?, ?> map) {
+            seen.put(target, Boolean.TRUE);
+            maskMap(map);
+            for (Object value : map.values()) {
+                walk(value, seen);
+            }
+            return;
+        }
+        if (shouldSkip(target.getClass())) {
+            return;
+        }
+        seen.put(target, Boolean.TRUE);
+        maskFields(target, seen);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void maskMap(Map<?, ?> map) {
+        Map<Object, Object> writable = (Map<Object, Object>) map;
+        for (Map.Entry<Object, Object> entry : writable.entrySet()) {
+            if (entry.getKey() instanceof String key && entry.getValue() instanceof String value) {
+                String typeCode = properties.typeCodeOf(key);
+                if (typeCode != null) {
+                    entry.setValue(engine.apply(value, null, typeCode, maskContext));
+                }
+            }
+        }
+    }
+
+    private void maskFields(Object target, IdentityHashMap<Object, Boolean> seen) {
+        Class<?> type = target.getClass();
+        while (type != null && type != Object.class) {
+            for (Field field : type.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers()) || field.isSynthetic()) {
+                    continue;
+                }
+                field.setAccessible(true);
+                try {
+                    Object value = field.get(target);
+                    Sensitive sensitive = field.getAnnotation(Sensitive.class);
+                    if (sensitive != null && value instanceof String text) {
+                        field.set(target, engine.apply(text, sensitive.type(), sensitive.code(), maskContext));
+                    } else {
+                        walk(value, seen);
+                    }
+                } catch (IllegalAccessException ignored) {
+                    // 模块系统下个别字段可能仍不可访问，跳过比让整次请求失败更符合 fail-open
+                }
+            }
+            type = type.getSuperclass();
+        }
+    }
+
+    private boolean shouldSkip(Class<?> type) {
+        if (type.isPrimitive() || type.isEnum() || type == String.class) {
+            return true;
+        }
+        String name = type.getName();
+        for (String prefix : SKIP_PACKAGES) {
+            if (name.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+}
