@@ -1,0 +1,7 @@
+masking:
+  channels:
+    jackson: true
+    logback: true
+    aop: false
+    mybatis: false
+    strict: false

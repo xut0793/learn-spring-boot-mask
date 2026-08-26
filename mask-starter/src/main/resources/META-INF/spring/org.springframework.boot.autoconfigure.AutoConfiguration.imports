@@ -1,0 +1,5 @@
+com.learn.mask.config.MaskingAutoConfiguration
+com.learn.mask.config.JacksonMaskingAutoConfiguration
+com.learn.mask.config.AopMaskingAutoConfiguration
+com.learn.mask.config.MybatisMaskingAutoConfiguration
+com.learn.mask.config.WebMaskingAutoConfiguration

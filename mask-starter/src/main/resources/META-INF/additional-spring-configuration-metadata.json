@@ -1,0 +1,386 @@
+{
+  "groups": [
+    {
+      "name": "masking",
+      "type": "com.learn.mask.config.MaskingProperties",
+      "description": "脱敏总开关、通道、角色、规则与缓存。"
+    },
+    {
+      "name": "masking.channels",
+      "type": "com.learn.mask.config.MaskingProperties$Channels",
+      "sourceType": "com.learn.mask.config.MaskingProperties",
+      "description": "四个切点开关。Jackson 与 AOP/MyBatis 同时开启时，strict=true 启动失败，否则打 WARN。"
+    },
+    {
+      "name": "masking.cache",
+      "type": "com.learn.mask.config.MaskingProperties$Cache",
+      "sourceType": "com.learn.mask.config.MaskingProperties",
+      "description": "明文到脱敏结果的本地缓存。"
+    },
+    {
+      "name": "masking.debug",
+      "type": "com.learn.mask.config.MaskingProperties$Debug",
+      "sourceType": "com.learn.mask.config.MaskingProperties",
+      "description": "用请求头覆盖角色，仅建议在联调时打开。"
+    },
+    {
+      "name": "masking.reversible",
+      "type": "com.learn.mask.config.MaskingProperties$Reversible",
+      "sourceType": "com.learn.mask.config.MaskingProperties",
+      "description": "AES-GCM 可逆脱敏。接口仍输出星号，还原接口用令牌换明文。"
+    },
+    {
+      "name": "masking.rules",
+      "type": "com.learn.mask.config.MaskingProperties$RuleSet",
+      "sourceType": "com.learn.mask.config.MaskingProperties",
+      "description": "各类型保留前后缀规则。"
+    }
+  ],
+  "properties": [
+    {
+      "name": "masking.enabled",
+      "type": "java.lang.Boolean",
+      "description": "脱敏总开关。关闭后所有通道原样输出。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.channels.jackson",
+      "type": "java.lang.Boolean",
+      "description": "Jackson 序列化出口脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.channels.logback",
+      "type": "java.lang.Boolean",
+      "description": "Logback 日志内容脱敏（需配置 %sensitiveMsg）。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.channels.aop",
+      "type": "java.lang.Boolean",
+      "description": "AOP 通道：对 @SensitiveMethod 返回值就地脱敏。",
+      "defaultValue": false
+    },
+    {
+      "name": "masking.channels.mybatis",
+      "type": "java.lang.Boolean",
+      "description": "MyBatis 结果集 TypeHandler 脱敏。TypeHandler 只能在 Mapper @Result 中按类名引用。",
+      "defaultValue": false
+    },
+    {
+      "name": "masking.channels.strict",
+      "type": "java.lang.Boolean",
+      "description": "Jackson 与 AOP/MyBatis 同时开启时是否启动失败。false 时仅 WARN。",
+      "defaultValue": false
+    },
+    {
+      "name": "masking.bypass-roles",
+      "type": "java.util.List<java.lang.String>",
+      "description": "跳过脱敏、直接看明文的角色，默认 ADMIN。",
+      "defaultValue": ["ADMIN"]
+    },
+    {
+      "name": "masking.unmask-roles",
+      "type": "java.util.List<java.lang.String>",
+      "description": "允许调用还原接口的角色，默认 ADMIN、CS。",
+      "defaultValue": ["ADMIN", "CS"]
+    },
+    {
+      "name": "masking.cache.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否缓存明文到脱敏结果。热更新规则后缓存会失效。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.cache.max-size",
+      "type": "java.lang.Long",
+      "description": "缓存最大条目数。",
+      "defaultValue": 10000
+    },
+    {
+      "name": "masking.cache.expire-after-access-minutes",
+      "type": "java.lang.Long",
+      "description": "缓存写入后多久未访问则过期（分钟）。",
+      "defaultValue": 10
+    },
+    {
+      "name": "masking.debug.header-role-enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否允许用请求头覆盖当前脱敏角色。",
+      "defaultValue": false
+    },
+    {
+      "name": "masking.debug.header-name",
+      "type": "java.lang.String",
+      "description": "覆盖角色的请求头名称。",
+      "defaultValue": "X-User-Role"
+    },
+    {
+      "name": "masking.extra-map-keys",
+      "type": "java.util.Map<java.lang.String,java.lang.String>",
+      "description": "业务自定义类型的 Map 键映射，例如 expressNo: EXPRESS。枚举中不存在的编码走 masking.rules.extras。"
+    },
+    {
+      "name": "masking.extra-map-keys.*",
+      "type": "java.lang.String",
+      "description": "JSON/Map 字段名对应的业务策略编码，与 MaskStrategy.code() 一致。"
+    },
+    {
+      "name": "masking.map-keys",
+      "type": "java.util.Map<java.lang.String,com.learn.mask.annotation.SensitiveType>",
+      "description": "无 @Sensitive 注解时，按 Map 字段名匹配内置 SensitiveType。"
+    },
+    {
+      "name": "masking.reversible.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用 AES-GCM 可逆脱敏令牌。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.reversible.secret-key",
+      "type": "java.lang.String",
+      "description": "AES-GCM 密钥，生产环境请用环境变量覆盖，勿使用默认值。"
+    },
+    {
+      "name": "masking.rules.phone",
+      "type": "com.learn.mask.config.MaskRule",
+      "description": "手机号规则，默认保留前 3 后 4。"
+    },
+    {
+      "name": "masking.rules.phone.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用该类型脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.rules.phone.keep-prefix",
+      "type": "java.lang.Integer",
+      "description": "保留前缀长度。",
+      "defaultValue": 3
+    },
+    {
+      "name": "masking.rules.phone.keep-suffix",
+      "type": "java.lang.Integer",
+      "description": "保留后缀长度。",
+      "defaultValue": 4
+    },
+    {
+      "name": "masking.rules.phone.mask-char",
+      "type": "java.lang.Character",
+      "description": "掩码字符。",
+      "defaultValue": "*"
+    },
+    {
+      "name": "masking.rules.id-card",
+      "type": "com.learn.mask.config.MaskRule",
+      "description": "身份证号规则，默认保留前 6 后 4。"
+    },
+    {
+      "name": "masking.rules.id-card.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用该类型脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.rules.id-card.keep-prefix",
+      "type": "java.lang.Integer",
+      "description": "保留前缀长度。",
+      "defaultValue": 6
+    },
+    {
+      "name": "masking.rules.id-card.keep-suffix",
+      "type": "java.lang.Integer",
+      "description": "保留后缀长度。",
+      "defaultValue": 4
+    },
+    {
+      "name": "masking.rules.id-card.mask-char",
+      "type": "java.lang.Character",
+      "description": "掩码字符。",
+      "defaultValue": "*"
+    },
+    {
+      "name": "masking.rules.bank-card",
+      "type": "com.learn.mask.config.MaskRule",
+      "description": "银行卡号规则，默认保留前 4 后 4。"
+    },
+    {
+      "name": "masking.rules.bank-card.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用该类型脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.rules.bank-card.keep-prefix",
+      "type": "java.lang.Integer",
+      "description": "保留前缀长度。",
+      "defaultValue": 4
+    },
+    {
+      "name": "masking.rules.bank-card.keep-suffix",
+      "type": "java.lang.Integer",
+      "description": "保留后缀长度。",
+      "defaultValue": 4
+    },
+    {
+      "name": "masking.rules.bank-card.mask-char",
+      "type": "java.lang.Character",
+      "description": "掩码字符。",
+      "defaultValue": "*"
+    },
+    {
+      "name": "masking.rules.email",
+      "type": "com.learn.mask.config.MaskRule",
+      "description": "邮箱规则，默认保留本地部分前 1 位。"
+    },
+    {
+      "name": "masking.rules.email.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用该类型脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.rules.email.keep-prefix",
+      "type": "java.lang.Integer",
+      "description": "邮箱本地部分保留前缀长度。",
+      "defaultValue": 1
+    },
+    {
+      "name": "masking.rules.email.keep-suffix",
+      "type": "java.lang.Integer",
+      "description": "保留后缀长度（邮箱策略通常为 0）。",
+      "defaultValue": 0
+    },
+    {
+      "name": "masking.rules.email.mask-char",
+      "type": "java.lang.Character",
+      "description": "掩码字符。",
+      "defaultValue": "*"
+    },
+    {
+      "name": "masking.rules.custom",
+      "type": "com.learn.mask.config.MaskRule",
+      "description": "通用 CUSTOM 规则，默认保留前 1 后 1。"
+    },
+    {
+      "name": "masking.rules.custom.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用该类型脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.rules.custom.keep-prefix",
+      "type": "java.lang.Integer",
+      "description": "保留前缀长度。",
+      "defaultValue": 1
+    },
+    {
+      "name": "masking.rules.custom.keep-suffix",
+      "type": "java.lang.Integer",
+      "description": "保留后缀长度。",
+      "defaultValue": 1
+    },
+    {
+      "name": "masking.rules.custom.mask-char",
+      "type": "java.lang.Character",
+      "description": "掩码字符。",
+      "defaultValue": "*"
+    },
+    {
+      "name": "masking.rules.address",
+      "type": "com.learn.mask.config.MaskRule",
+      "description": "地址规则。有门牌号时由业务 AddressMaskStrategy 遮盖末尾数字；否则按保留前后缀打星。"
+    },
+    {
+      "name": "masking.rules.address.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用该类型脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.rules.address.keep-prefix",
+      "type": "java.lang.Integer",
+      "description": "无门牌号时保留前缀长度。",
+      "defaultValue": 3
+    },
+    {
+      "name": "masking.rules.address.keep-suffix",
+      "type": "java.lang.Integer",
+      "description": "无门牌号时保留后缀长度。",
+      "defaultValue": 0
+    },
+    {
+      "name": "masking.rules.address.mask-char",
+      "type": "java.lang.Character",
+      "description": "掩码字符。",
+      "defaultValue": "*"
+    },
+    {
+      "name": "masking.rules.extras",
+      "type": "java.util.Map<java.lang.String,com.learn.mask.config.MaskRule>",
+      "description": "业务自定义类型规则，键为 MaskStrategy.code()，无需改 starter 枚举。例如 EXPRESS。"
+    },
+    {
+      "name": "masking.rules.extras.*",
+      "type": "com.learn.mask.config.MaskRule",
+      "description": "某一业务自定义类型的脱敏规则。"
+    },
+    {
+      "name": "masking.rules.extras.*.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用该自定义类型脱敏。",
+      "defaultValue": true
+    },
+    {
+      "name": "masking.rules.extras.*.keep-prefix",
+      "type": "java.lang.Integer",
+      "description": "保留前缀长度。"
+    },
+    {
+      "name": "masking.rules.extras.*.keep-suffix",
+      "type": "java.lang.Integer",
+      "description": "保留后缀长度。"
+    },
+    {
+      "name": "masking.rules.extras.*.mask-char",
+      "type": "java.lang.Character",
+      "description": "掩码字符。",
+      "defaultValue": "*"
+    }
+  ],
+  "hints": [
+    {
+      "name": "masking.bypass-roles",
+      "values": [
+        { "value": "ADMIN", "description": "旁路明文。" },
+        { "value": "USER", "description": "始终脱敏。" },
+        { "value": "CS", "description": "出口脱敏，可调用还原接口。" }
+      ]
+    },
+    {
+      "name": "masking.unmask-roles",
+      "values": [
+        { "value": "ADMIN", "description": "可还原明文。" },
+        { "value": "CS", "description": "客服，可还原明文。" },
+        { "value": "USER", "description": "普通用户，默认不可还原。" }
+      ]
+    },
+    {
+      "name": "masking.map-keys.values",
+      "values": [
+        { "value": "PHONE" },
+        { "value": "ID_CARD" },
+        { "value": "BANK_CARD" },
+        { "value": "EMAIL" },
+        { "value": "CUSTOM" },
+        { "value": "ADDRESS" }
+      ]
+    },
+    {
+      "name": "masking.debug.header-name",
+      "values": [
+        { "value": "X-User-Role", "description": "默认调试角色头。" }
+      ]
+    }
+  ]
+}
