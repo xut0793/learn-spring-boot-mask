@@ -53,13 +53,20 @@ masking:
     header-role-enabled: true
     header-name: X-User-Role
   extra-map-keys:
+    detail: ADDRESS
+    addressDetail: ADDRESS
+    address_detail: ADDRESS
     expressNo: EXPRESS
     express_no: EXPRESS
     trackingNo: EXPRESS
     tracking_no: EXPRESS
   reversible:
     enabled: true
-    secret-key: ${MASKING_AES_KEY:demo-key-not-for-prod-32b!!}
+    secret-key: ${MASKING_AES_KEY:demo-key-not-for-production-use!}
+    fields:
+      - phone
+      - idCard
+      - identityCard
   rules:
     phone:
       keep-prefix: 3
@@ -75,13 +82,11 @@ masking:
     custom:
       keep-prefix: 1
       keep-suffix: 1
-    # 地址自定义规则：有门牌号时由 AddressMaskStrategy 遮盖末尾数字；无门牌号时按保留前缀打星
-    address:
-      enabled: true
-      keep-prefix: 3
-      keep-suffix: 0
     # 业务自定义类型规则，键为 MaskStrategy.code()，无需改 starter 枚举
     extras:
+      ADDRESS:
+        keep-prefix: 3
+        keep-suffix: 0
       EXPRESS:
         keep-prefix: 2
         keep-suffix: 4

@@ -13,7 +13,8 @@ import tools.jackson.databind.ValueSerializer;
 
 /**
  * Jackson 3 字段序列化器：按 {@link Sensitive} 或 {@code masking.map-keys}/{@code extra-map-keys} 调用引擎后再写出。
- * 无参构造给 Jackson 反射用，运行时从 {@link MaskingSpringBridge} 取引擎。
+ * {@link com.learn.mask.jackson.SensitiveJacksonModule} 会直接传入引擎；
+ * 无参构造留给 {@link SensitiveMapView} 等仍走静态桥的路径。
  */
 public class SensitiveValueSerializer extends ValueSerializer<String> {
 
@@ -22,21 +23,22 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
     private final MaskContext maskContext;
     private final SensitiveType type;
     private final String code;
+    private final boolean passthrough;
 
     public SensitiveValueSerializer() {
         this(MaskingSpringBridge.engine(), MaskingSpringBridge.properties(), MaskingSpringBridge.context(),
-                SensitiveType.CUSTOM, SensitiveType.CUSTOM.name());
+                SensitiveType.CUSTOM, SensitiveType.CUSTOM.name(), false);
     }
 
     public SensitiveValueSerializer(MaskEngine engine, MaskingProperties properties, MaskContext maskContext) {
-        this(engine, properties, maskContext, SensitiveType.CUSTOM, SensitiveType.CUSTOM.name());
+        this(engine, properties, maskContext, SensitiveType.CUSTOM, SensitiveType.CUSTOM.name(), false);
     }
 
     public SensitiveValueSerializer(MaskEngine engine,
                                     MaskingProperties properties,
                                     MaskContext maskContext,
                                     SensitiveType type) {
-        this(engine, properties, maskContext, type, type == null ? null : type.name());
+        this(engine, properties, maskContext, type, type == null ? null : type.name(), false);
     }
 
     public SensitiveValueSerializer(MaskEngine engine,
@@ -44,11 +46,21 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
                                     MaskContext maskContext,
                                     SensitiveType type,
                                     String code) {
+        this(engine, properties, maskContext, type, code, false);
+    }
+
+    private SensitiveValueSerializer(MaskEngine engine,
+                                     MaskingProperties properties,
+                                     MaskContext maskContext,
+                                     SensitiveType type,
+                                     String code,
+                                     boolean passthrough) {
         this.engine = engine;
         this.properties = properties;
         this.maskContext = maskContext;
         this.type = type;
         this.code = code;
+        this.passthrough = passthrough;
     }
 
     @Override
@@ -70,7 +82,7 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
                         resolveEngine(), props, resolveContext(), SensitiveType.CUSTOM, resolvedCode);
             }
         }
-        return this;
+        return new SensitiveValueSerializer(null, null, null, SensitiveType.CUSTOM, null, true);
     }
 
     private Sensitive findSensitive(BeanProperty property) {
@@ -90,9 +102,16 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
 
     @Override
     public void serialize(String value, JsonGenerator gen, SerializationContext ctxt) {
+        if (value == null || passthrough) {
+            gen.writeString(value);
+            return;
+        }
         MaskingProperties props = resolveProperties();
         MaskEngine maskEngine = resolveEngine();
-        if (value == null || maskEngine == null || props == null || !props.isEnabled() || !props.getChannels().isJackson()) {
+        if (maskEngine == null || props == null) {
+            throw new IllegalStateException("Masking engine is not bound");
+        }
+        if (!props.isEnabled() || !props.getChannels().isJackson()) {
             gen.writeString(value);
             return;
         }

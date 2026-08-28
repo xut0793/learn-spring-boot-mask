@@ -1,5 +1,6 @@
 package com.learn.mask.config;
 
+import com.learn.mask.cache.MaskResultCache;
 import com.learn.mask.context.HeaderRoleFilter;
 import com.learn.mask.engine.MaskEngine;
 import com.learn.mask.web.MaskingReloadController;
@@ -33,7 +34,8 @@ public class WebMaskingAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public MaskingReloadController maskingReloadController(MaskingProperties properties, com.learn.mask.cache.MaskCache maskCache) {
+    public MaskingReloadController maskingReloadController(MaskingProperties properties,
+                                                           MaskResultCache maskCache) {
         return new MaskingReloadController(properties, maskCache);
     }
 }

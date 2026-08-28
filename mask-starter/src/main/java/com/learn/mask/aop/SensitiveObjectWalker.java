@@ -36,17 +36,18 @@ public class SensitiveObjectWalker {
     }
 
     private void walk(Object target, IdentityHashMap<Object, Boolean> seen) {
-        if (target == null || shouldSkip(target.getClass()) || seen.containsKey(target)) {
+        if (target == null || seen.containsKey(target)) {
             return;
         }
-        seen.put(target, Boolean.TRUE);
         if (target instanceof Collection<?> collection) {
+            seen.put(target, Boolean.TRUE);
             for (Object item : collection) {
                 walk(item, seen);
             }
             return;
         }
         if (target.getClass().isArray()) {
+            seen.put(target, Boolean.TRUE);
             int length = Array.getLength(target);
             for (int i = 0; i < length; i++) {
                 walk(Array.get(target, i), seen);
@@ -54,12 +55,17 @@ public class SensitiveObjectWalker {
             return;
         }
         if (target instanceof Map<?, ?> map) {
+            seen.put(target, Boolean.TRUE);
             maskMap(map);
             for (Object value : map.values()) {
                 walk(value, seen);
             }
             return;
         }
+        if (shouldSkip(target.getClass())) {
+            return;
+        }
+        seen.put(target, Boolean.TRUE);
         maskFields(target, seen);
     }
 

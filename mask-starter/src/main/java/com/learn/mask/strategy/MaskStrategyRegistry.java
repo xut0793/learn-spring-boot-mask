@@ -39,10 +39,22 @@ public class MaskStrategyRegistry {
         strategies.put(normalize(strategy.code()), strategy);
     }
 
-    private static String normalize(String code) {
+    /**
+     * 类型编码归一化：空白回落 CUSTOM，其余 trim + 大写。
+     * 规则查找、策略表、缓存 key 共用这一处，避免两套实现漂移。
+     */
+    public static String normalize(String code) {
         if (code == null || code.isBlank()) {
             return SensitiveType.CUSTOM.name();
         }
         return code.trim().toUpperCase(Locale.ROOT);
+    }
+
+    /** {@code code} 非空时优先，否则用枚举名，两者都空则 CUSTOM。 */
+    public static String resolve(String code, SensitiveType type) {
+        if (code != null && !code.isBlank()) {
+            return normalize(code);
+        }
+        return normalize(type == null ? null : type.name());
     }
 }

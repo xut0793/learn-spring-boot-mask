@@ -321,7 +321,7 @@ MaskRole role = context == null ? MaskRole.USER : context.current();
 
 注意 `MaskUtils.isBlank` 把 `"   "` 也算空值，所以纯空格字符串会原样返回。这是对的——空格里没有敏感信息。
 
-**关于总开关的一个观察**：`masking.enabled: false` 会让整个方案彻底失效。这个开关的存在是为了应急（脱敏组件出了严重 bug，需要立刻关掉保业务），但它也是一个危险的按钮。第 17 章会讨论要不要给它加告警。
+**关于总开关的一个观察**：`masking.enabled: false` 会让整个方案彻底失效。这个开关的存在是为了应急（脱敏组件出了严重 bug，需要立刻关掉保业务），但它也是一个危险的按钮。教程把空值和总开关都记成 `BYPASS`；starter 把总开关拆成 `MaskAction.DISABLED`，启动和热更新打 error 日志，见 6.11。
 
 ### 第 2 步：角色旁路必须在查规则之前
 
@@ -718,80 +718,46 @@ verify(cache, never()).get(anyString(), anyString());
 
 ## 6.11 对照真实实现
 
-结构和 `mask-starter` 高度一致，判定顺序**完全相同**。差异都在依赖类型上：
+`mask-starter` 已按本章方案落地：引擎只依赖三个窄接口，判定顺序与教程相同。
 
-| 方面      | 你的 `ch06`                        | `mask-starter`                            | 评价                                                 |
-| ------- | -------------------------------- | ----------------------------------------- | -------------------------------------------------- |
-| 配置依赖    | `MaskSettings` 窄接口               | 直接依赖 `MaskingProperties` 具体类              | **教程版更好。** 真实版让引擎耦合了一个有几十个 getter 的大类，测试必须构造完整配置对象 |
-| 缓存依赖    | `MaskResultCache` 接口             | 直接依赖 `MaskCache` 具体类                      | **教程版更好。** 真实版无法在不启动 Caffeine 的情况下测引擎              |
-| 指标依赖    | `MaskRecorder` 接口                | 直接依赖 `MaskingMetrics` 具体类                 | **教程版更好。** 同上                                      |
-| null 兜底 | 构造函数里换成 `NO_OP`                  | `record()` 里判 `metrics == null`           | 教程版把兜底集中在构造函数，主流程更干净                               |
-| 空值判断    | `MaskUtils.isBlank(raw)`         | `raw == null \|\| MaskUtils.isBlank(raw)` | 真实版的 `raw == null` 是冗余的，`isBlank` 已经含 null 检查      |
-| 编码归一化   | `MaskStrategyRegistry.normalize` | `MaskingProperties.normalizeCode`         | 真实版把归一化放在配置类里，和策略表的 `normalize` 是两份实现              |
-| 判定顺序    | 八步                               | 八步，完全一致                                   | —                                                  |
+| 方面 | 你的 `ch06` | `mask-starter` | 评价 |
+| --- | --- | --- | --- |
+| 配置依赖 | `MaskSettings` | 同左；`MaskingProperties` 实现该接口 | 测试可用替身，不必构造完整配置 |
+| 缓存依赖 | `MaskResultCache` | 同左；`MaskCache` 实现该接口，构造函数 `null` → `NO_OP` | 可不启动 Caffeine 测引擎 |
+| 指标依赖 | `MaskRecorder` | 同左；`MaskingMetrics` 实现该接口 | 同左 |
+| 空值判断 | `MaskUtils.isBlank(raw)` | 同左 | `isBlank` 已含 null |
+| 编码归一化 | `MaskStrategyRegistry.normalize` | `MaskStrategyRegistry.resolve`；`normalizeCode` 只做委托 | 只留一份 trim + 大写 |
+| 总开关 | 记 `BYPASS` | 单独的 `MaskAction.DISABLED`，启动和热更新打 error 日志 | starter 可观测性更强 |
+| 判定顺序 | 八步 | 八步，完全一致 | — |
 
-真实实现的核心：
+成品核心：
 
-```49:85:mask-starter/src/main/java/com/learn/mask/engine/MaskEngine.java
+```50:88:mask-starter/src/main/java/com/learn/mask/engine/MaskEngine.java
     public String apply(String raw, SensitiveType type, String code, MaskContext context) {
         long start = System.nanoTime();
         MaskRole role = context == null ? MaskRole.USER : context.current();
-        String resolvedCode = MaskingProperties.normalizeCode(code, type);
+        String resolvedCode = MaskStrategyRegistry.resolve(code, type);
         try {
-            if (raw == null || MaskUtils.isBlank(raw) || !properties.isEnabled()) {
-                record(resolvedCode, role, MaskAction.BYPASS, start);
-                return raw;
+            if (MaskUtils.isBlank(raw)) {
+                return record(raw, resolvedCode, role, MaskAction.BYPASS, start);
             }
-            if (context != null && context.shouldBypass()) {
-                record(resolvedCode, role, MaskAction.BYPASS, start);
-                return raw;
+            if (!settings.isEnabled()) {
+                return record(raw, resolvedCode, role, MaskAction.DISABLED, start);
             }
-            MaskStrategy strategy = registry.get(resolvedCode);
-            MaskRule rule = properties.ruleOf(resolvedCode);
-            if (strategy == null || rule == null || !rule.isEnabled()) {
-                record(resolvedCode, role, MaskAction.BYPASS, start);
-                return raw;
-            }
-            if (alreadyMaskedDetector.isAlreadyMasked(raw, strategy, rule)) {
-                record(resolvedCode, role, MaskAction.SKIP_ALREADY_MASKED, start);
-                return raw;
-            }
-            String cached = cache.get(resolvedCode, raw);
-            if (cached != null) {
-                record(resolvedCode, role, MaskAction.MASK, start);
-                return cached;
-            }
-            String masked = strategy.mask(raw, rule);
-            cache.put(resolvedCode, raw, masked);
-            record(resolvedCode, role, MaskAction.MASK, start);
-            return masked;
+            // ...
+            return record(masked, resolvedCode, role, MaskAction.MASK, start);
         } catch (RuntimeException ex) {
-            record(resolvedCode, role, MaskAction.FAIL, start);
+            record(raw, resolvedCode, role, MaskAction.FAIL, start);
             throw ex;
         }
     }
 ```
 
-### 两处值得注意的编码风格差异
+`record(...)` 返回结果，避免「记了指标但忘了 return」。`masking.enabled=false` 记 `DISABLED` 而不是 `BYPASS`，才能配「出现 `result=disabled` 即告警」。
 
-**1. `record` 的返回值。** 教程版让 `record` 返回结果，所以每条分支是一行：
+未知规则：`ruleOf` 回落快照里的 `CUSTOM`（第 7 章），引擎第 4 步的 `rule == null` 只是防注册表被换掉。不会因为漏配 extras 就返回明文。
 
-```java
-return record(raw, resolvedCode, role, MaskAction.BYPASS, start);
-```
-
-真实版是两行：
-
-```java
-record(resolvedCode, role, MaskAction.BYPASS, start);
-return raw;
-```
-
-真实版更直白（`record` 是纯副作用，不假装返回值），教程版更紧凑（八条分支省了八行，而且不会出现「记了指标但忘了 return」）。这是个人偏好，没有对错。
-
-**2. `MaskingProperties.normalizeCode` 是个静态方法。** 真实版把编码归一化放在配置类里，而策略表 `MaskStrategyRegistry` 里还有一个自己的 `normalize`。两个方法做同一件事，逻辑必须保持一致，否则「策略查到了但规则查不到」。教程版统一用策略表的那个，少一份要同步的实现。
-
-这类「同一逻辑两份实现」是很常见的技术债来源。它不会立刻出问题，但会在某天有人改了其中一个之后出问题，而且那时候没人记得还有另一个。
+自动配置同样按接口装配：`@ConditionalOnMissingBean(MaskResultCache.class)` / `MaskRecorder`，引擎 Bean 注入的是接口而不是 `MaskCache` / `MaskingMetrics`。业务可以整类替换缓存或指标实现。
 
 ---
 
@@ -807,7 +773,7 @@ return raw;
 - 缓存命中记 `MASK` 而不是单独的 action：一个指标回答一个问题，命中率由缓存组件自己度量
 - `code` 优先于 `type`，因为 `@Sensitive` 的 `type` 有默认值，否则自定义编码永不生效
 - 异常**重新抛出**，不吞。安全组件出错要 **fail-closed 且 fail-loud**。代价是策略 bug 会让接口 500，用总开关和类型级开关来兜
-- **规则缺失时返回明文**是当前设计里最需要改的一点，见练习 6.2
+- 教程版 `rule == null` 仍返回明文（练习 6.2）；starter 的 `ruleOf` 回落 `CUSTOM`，漏配 extras 不会裸奔
 - 判断抽象值不值得的标准：**如果将来不需要它，删掉的成本有多高**
 
 下一章把硬编码的规则搬到 `application.yml`，并让它支持不重启生效。
@@ -833,7 +799,7 @@ return raw;
 2. 写出代码改动
 3. 这个改动会影响缓存吗？会影响指标吗？
 
-**练习 6.4** 阅读 `mask-starter` 的 `MaskEngine`，找出**两处**教程版没有提到的、你认为可以改进的地方。对每一处说明：现状、问题、改法、以及不改的后果有多严重。
+**练习 6.4** 下面答案里的三处，曾经是 starter 相对教程的缺口。阅读当前 `mask-starter` 的 `MaskEngine`、`MaskStrategyRegistry`、`MaskingChannelValidator`、`MaskingReloadService`，对照每一处**已经落地的改法**，说明它解决了什么问题。若还能找出教程没写、starter 也还没改的点，同样按「现状 / 问题 / 改法 / 不改的后果」写下来。
 
 ---
 
@@ -1108,15 +1074,15 @@ String cached = isNeverBypassable(resolvedCode) ? null : cache.get(resolvedCode,
 
 ### 练习 6.4
 
-我选两处 6.11 节表格里点到但没展开、以及一处完全没提的。
+这三处已经按建议改入 starter。下面保留「为什么要改」的论证，并注明当前代码位置。
 
 ---
 
-**改进点一：`normalizeCode` 逻辑存在两份实现**
+**改进点一：`normalizeCode` 逻辑存在两份实现（已改）**
 
-**现状**
+**改前**
 
-`mask-starter` 里有两个做同一件事的方法：
+曾经有两个做同一件事的方法：
 
 ```java
 // MaskStrategyRegistry.normalize，策略表用
@@ -1143,43 +1109,19 @@ public static String normalizeCode(String code, SensitiveType type) { ... }
 2. **两份实现必须保持一致，但没有任何机制保证。** 今天它们逻辑相同，如果有人给其中一个加了「把连字符转成下划线」这种规整，另一个不改，就会出现「策略查到了但规则查不到」——引擎第 4 步判定 `rule == null` 走旁路，**字段静默返回明文**
 3. **归一化的职责归属不清。** 它既不属于「配置」也不属于「策略表」，它属于「类型编码」这个概念本身
 
-**改法**
+**改后**
 
-把编码归一化提升为一个独立的值对象或工具类，两处都用它：
+没有单独抽 `TypeCode` 类：`MaskStrategyRegistry.normalize` / `resolve` 是唯一实现，`MaskingProperties.normalizeCode` 只做委托，缓存 key 也走 `normalize`。`registry.get` 仍内部再归一化一次（幂等，已是大写时几乎只是一次 Map 查找前的 trim），当作防调用方漏归一化的保险。
 
-```java
-public final class TypeCode {
-    public static String normalize(String code) {
-        if (code == null || code.isBlank()) {
-            return SensitiveType.CUSTOM.name();
-        }
-        return code.trim().toUpperCase(Locale.ROOT);
-    }
+**不改的后果**（改前）
 
-    public static String resolve(String code, SensitiveType type) {
-        if (code != null && !code.isBlank()) {
-            return normalize(code);
-        }
-        return normalize(type == null ? null : type.name());
-    }
-}
-```
-
-然后让 `MaskStrategyRegistry.get(String)` 约定**接收已归一化的编码**（在 javadoc 里写明），或者保留内部归一化但做成幂等的廉价检查。教程版做的就是前者的简化——统一用 `MaskStrategyRegistry.normalize`，只是没有单独抽类。
-
-**不改的后果**
-
-短期：一点性能浪费，可忽略。
-
-长期：**这是一个「安静的定时炸弹」**。它的引爆条件是「有人修改了其中一个归一化逻辑」，后果是「某些类型静默返回明文」，而且排查时不会有人想到两个 `normalize` 不一致。严重程度取决于运气，但一旦发生，泄露是静默的。
-
-严重性评级：中。不紧急，但应该在下一次重构时清掉。
+长期是「安静的定时炸弹」：改了其中一份归一化，另一份没跟上，就会「策略查到了但规则查不到」，字段静默返回明文。
 
 ---
 
-**改进点二：`masking.enabled: false` 是一个没有任何提示的核弹按钮**
+**改进点二：`masking.enabled: false` 是一个没有任何提示的核弹按钮（已改）**
 
-**现状**
+**改前**
 
 ```java
 if (raw == null || MaskUtils.isBlank(raw) || !properties.isEnabled()) {
@@ -1204,39 +1146,11 @@ if (raw == null || MaskUtils.isBlank(raw) || !properties.isEnabled()) {
 2. **应急后忘记恢复。** 生产出了脱敏相关的故障，运维按文档关掉总开关保业务，故障解决后忘了改回来。因为没有任何提示，可能几个月都没人发现
 3. **热更新被滥用。** 第 7 章的 reload 接口能改这个开关。虽然接口有权限控制，但一次误操作或一次接口越权就足够了
 
-**改法**
+**改后**
 
-三层，成本都很低：
+三层都进了 starter：`MaskingChannelValidator` 启动时若关掉总开关打 `log.error`；引擎记 `MaskAction.DISABLED`（Micrometer 标签 `result=disabled`，可单独告警）；`MaskingReloadService` 从开打到关时打 `log.error`。热更新日志目前没有操作者 / 来源 IP（Service 不持有请求上下文），要补应在 Controller 层取 `Authentication` 再传入。
 
-```java
-// 1. 启动时告警
-@PostConstruct
-void warnIfDisabled() {
-    if (!properties.isEnabled()) {
-        log.error("!!! 脱敏总开关已关闭（masking.enabled=false），所有敏感字段将返回明文。"
-                + "如果这不是预期行为，请立即检查配置 !!!");
-    }
-}
-```
-
-```java
-// 2. 独立的 action，让指标能区分「组件被关了」和「ADMIN 旁路」
-public enum MaskAction {
-    MASK, BYPASS, SKIP_ALREADY_MASKED, FAIL,
-    DISABLED     // 新增
-}
-```
-
-```java
-// 3. 热更新改这个开关时记审计日志
-if (oldEnabled && !newEnabled) {
-    log.error("脱敏总开关被关闭，操作者={}, 来源IP={}", operator, ip);
-}
-```
-
-第 2 条还有一个额外好处：能配一条「`masking.invoke{result=disabled}` 出现即告警」的规则，比「bypass 数量异常」这种间接指标准确得多。
-
-**不改的后果**
+**不改的后果**（改前）
 
 **这是我在整个项目里认为最危险的一处。** 理由是它的三个性质同时满足最坏组合：
 
@@ -1248,11 +1162,11 @@ if (oldEnabled && !newEnabled) {
 
 对比第 5 章 5.8 节的调试头开关：那个至少需要攻击者知道头的名字、并且每个请求都要带上，而且默认值是安全的。这个开关一关，**不需要任何后续动作，全站明文。**
 
-严重性评级：高。第 1 条改动只有五行代码，应该立刻加上。
+严重性评级：高。第 1 条改动只有五行代码，已经加上。
 
 ---
 
-**改进点三（额外）：`raw == null || MaskUtils.isBlank(raw)` 里的冗余**
+**改进点三（额外）：`raw == null || MaskUtils.isBlank(raw)` 里的冗余（已改）**
 
 这个纯属代码整洁问题，但值得一提，因为它暗示了一件事。
 
@@ -1268,6 +1182,8 @@ public static boolean isBlank(String value) {
 
 **它暗示的问题**：写这行代码的人当时不确定 `isBlank` 是否处理 null，于是加了一道保险。这种「不确定就加一层」的模式本身无害，但它是一个信号——**如果连作者都需要猜工具方法的空值行为，那么工具方法的契约没有表达清楚。**
 
-改法可以是给 `isBlank` 加一句 javadoc（`@param value 可以为 null`），或者用 `@Nullable` 注解。成本几乎为零，收益是下一个人不用猜。
+**改后**
+
+引擎只调 `MaskUtils.isBlank(raw)`；javadoc 写明 `value` 可以为 null。
 
 严重性评级：低。但这类小信号积累起来，就是「这个代码库让人不敢相信」的来源。

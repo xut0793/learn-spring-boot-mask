@@ -32,9 +32,6 @@ class ExpressNoMaskStrategyTest {
     }
 
     private static MaskRule expressRule() {
-        MaskRule maskRule = new MaskRule();
-        maskRule.setKeepPrefix(2);
-        maskRule.setKeepSuffix(4);
-        return maskRule;
+        return MaskRule.of(2, 4);
     }
 }

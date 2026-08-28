@@ -3,7 +3,7 @@ package com.learn.mask.demo.domain;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.learn.mask.annotation.Sensitive;
 import com.learn.mask.annotation.SensitiveType;
-import com.learn.mask.demo.mask.DemoSensitiveTypes;
+import com.learn.mask.demo.mask.ExpressNoMaskStrategy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,9 +21,9 @@ public class UserDto {
     @Sensitive(type = SensitiveType.BANK_CARD)
     private String bankCard;
     /**
-     * 快递单号：starter 未预定义该类型，使用业务编码 {@link com.learn.mask.demo.mask.DemoSensitiveTypes#EXPRESS}。
+     * 快递单号：starter 未预定义该类型，使用业务编码 {@link ExpressNoMaskStrategy#EXPRESS}。
      */
-    @Sensitive(code = DemoSensitiveTypes.EXPRESS)
+    @Sensitive(code = ExpressNoMaskStrategy.EXPRESS)
     private String expressNo;
     private AddressDto address;
     private List<ContactDto> contacts = new ArrayList<>();

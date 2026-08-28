@@ -1,7 +1,7 @@
 package com.learn.mask.demo.domain;
 
 import com.learn.mask.annotation.Sensitive;
-import com.learn.mask.annotation.SensitiveType;
+import com.learn.mask.demo.mask.AddressMaskStrategy;
 
 public class AddressDto {
 
@@ -9,7 +9,7 @@ public class AddressDto {
     /**
      * 详细地址走业务自定义策略 {@code AddressMaskStrategy}（门牌号打星）。
      */
-    @Sensitive(type = SensitiveType.ADDRESS)
+    @Sensitive(code = AddressMaskStrategy.ADDRESS)
     private String detail;
 
     public AddressDto() {

@@ -2,8 +2,7 @@ package com.learn.mask.config;
 
 import com.learn.mask.context.MaskContext;
 import com.learn.mask.engine.MaskEngine;
-import com.learn.mask.jackson.SensitiveMapSerializer;
-import com.learn.mask.jackson.SensitiveValueSerializer;
+import com.learn.mask.jackson.SensitiveJacksonModule;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -12,7 +11,7 @@ import org.springframework.context.annotation.Bean;
 import tools.jackson.databind.ValueSerializer;
 
 /**
- * Jackson 3 序列化通道：为 {@code @Sensitive} 字段与 Map 视图注册脱敏序列化器。
+ * Jackson 3 序列化通道：注册 {@link SensitiveJacksonModule}，由内省器发现 {@code @Sensitive}。
  */
 @AutoConfiguration(after = MaskingAutoConfiguration.class)
 @ConditionalOnClass(ValueSerializer.class)
@@ -21,17 +20,9 @@ public class JacksonMaskingAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public SensitiveValueSerializer sensitiveValueSerializer(MaskEngine engine,
-                                                             MaskingProperties properties,
-                                                             MaskContext maskContext) {
-        return new SensitiveValueSerializer(engine, properties, maskContext);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public SensitiveMapSerializer sensitiveMapSerializer(MaskEngine engine,
+    public SensitiveJacksonModule sensitiveJacksonModule(MaskEngine engine,
                                                          MaskingProperties properties,
                                                          MaskContext maskContext) {
-        return new SensitiveMapSerializer(engine, properties, maskContext);
+        return new SensitiveJacksonModule(engine, properties, maskContext);
     }
 }

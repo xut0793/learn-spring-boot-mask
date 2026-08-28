@@ -16,7 +16,7 @@ public class EmailMaskStrategy implements MaskStrategy {
 
     @Override
     public String mask(String raw, MaskRule rule) {
-        if (MaskUtils.isBlank(raw) || rule == null || !rule.isEnabled()) {
+        if (MaskUtils.isBlank(raw) || rule == null || !rule.enabled()) {
             return raw;
         }
         int at = raw.indexOf('@');
@@ -25,12 +25,12 @@ public class EmailMaskStrategy implements MaskStrategy {
         }
         String local = raw.substring(0, at);
         String domain = raw.substring(at);
-        int keep = Math.max(rule.getKeepPrefix(), 1);
+        int keep = Math.max(rule.keepPrefix(), 1);
         if (local.length() <= keep) {
-            return String.valueOf(rule.getMaskChar()).repeat(local.length()) + domain;
+            return String.valueOf(rule.maskChar()).repeat(local.length()) + domain;
         }
         return local.substring(0, keep)
-                + String.valueOf(rule.getMaskChar()).repeat(local.length() - keep)
+                + String.valueOf(rule.maskChar()).repeat(local.length() - keep)
                 + domain;
     }
 
@@ -44,8 +44,8 @@ public class EmailMaskStrategy implements MaskStrategy {
             return MaskUtils.alreadyKeepMasked(raw, rule);
         }
         String local = raw.substring(0, at);
-        int keep = Math.max(rule.getKeepPrefix(), 1);
-        char maskChar = rule.getMaskChar();
+        int keep = Math.max(rule.keepPrefix(), 1);
+        char maskChar = rule.maskChar();
         if (local.length() <= keep) {
             return local.chars().allMatch(c -> c == maskChar);
         }

@@ -458,15 +458,12 @@ mvn -f mask-tutorial/pom.xml test "-Dtest=SensitiveValueSerializerTest,Sensitive
 
 | 方面                       | 你的 `ch09`                                                   | `mask-starter`                                  | 评价               |
 | ------------------------ | ----------------------------------------------------------- | ----------------------------------------------- | ---------------- |
-| 注解                       | `@Sensitive` + `JacksonAnnotationsInside` + `JsonSerialize` | 相同，多一个 `reversible`                             | 第 14 章再加         |
-| 序列化器基类                   | `ValueSerializer<String>`                                   | 相同                                              | —                |
-| `createContextual` 返回新实例 | 是                                                           | 是                                               | 正确               |
-| 无参构造 + 静态桥               | 有，且有 `unbind`                                               | 有 bind，**无 unbind**                             | 教程版可单测           |
-| fail-open                | `engine == null` 写明文                                        | 相同                                              | 两边都该改，见练习 9.2    |
-| `ChannelProperties`      | 独立类                                                         | `MaskingProperties.Channels` 内部类                | 教程尚未把通道开关并进 YAML |
-| Map                      | `SensitiveMapView` 包装                                       | 相同                                              | —                |
-| 自动配置                     | 本章未写                                                        | `JacksonMaskingAutoConfiguration` 声明了两个 `@Bean` | 见下               |
-| 两套 Jackson 包             | 故意保持和 starter 一致                                            | `com.fasterxml` 注解 + `tools.jackson` 实现         | 第 17 章改进项        |
+| 注解 | `@Sensitive` + `JacksonAnnotationsInside` + `JsonSerialize` | **纯标记**；`SensitiveJacksonModule` 发现注解 | starter 已解耦；教程保留组合注解教学 |
+| 序列化器基类 | `ValueSerializer<String>` | 相同 | — |
+| `createContextual` 返回新实例 | 是 | 是 | 正确 |
+| 无参构造 + 静态桥 | 有，且有 `unbind` | `@Sensitive` 走 Module；Map 视图 / Logback / MyBatis 仍用桥；Lifecycle 会 unbind | 教程版可脱离容器单测 |
+| 未 bind | fail-open 写明文 | `@Sensitive` 抛错；Logback 盖星号 | starter 更严 |
+| 自动配置 | 本章未写 | 注册 `SensitiveJacksonModule` Bean，Boot 收集进 `JsonMapper` | 见下 |
 
 真实序列化器的上下文化：
 
@@ -487,27 +484,19 @@ mvn -f mask-tutorial/pom.xml test "-Dtest=SensitiveValueSerializerTest,Sensitive
     }
 ```
 
-### 差异一：`JacksonMaskingAutoConfiguration` 的两个 `@Bean` 基本没用
+### 差异一：starter 用 Module，教程用组合注解
 
-```22:28:mask-starter/src/main/java/com/learn/mask/config/JacksonMaskingAutoConfiguration.java
-    @Bean
-    @ConditionalOnMissingBean
-    public SensitiveValueSerializer sensitiveValueSerializer(...) {
-        return new SensitiveValueSerializer(engine, properties, maskContext);
-    }
-```
+教程靠 `@JsonSerialize(using = ...)` 让 Jackson 自己 `new` 序列化器，所以必须静态桥 + 无参构造。starter 注册 `SensitiveJacksonModule`，内省器直接返回已注入的实例。两个 `@Bean` 序列化器已经去掉。
 
-`@JsonSerialize(using = SensitiveValueSerializer.class)` 让 Jackson 反射 new，**不会**向 Spring 要这个 Bean。除非配置了 `HandlerInstantiator` 并且它按类型查找 Bean，这个 `@Bean` 只是容器里多了一个没人调用 `serialize` 的对象。
-
-真正让引擎被序列化器看到的，是 `MaskingAutoConfiguration` 里创建 `MaskEngine` 时的 `MaskingSpringBridge.bind(...)`。自动配置类的名字容易让人以为「注册 Bean = 接入 Jackson」，其实接入点是注解，接入依赖是静态桥。
+`SensitiveMapView` 仍然 `new SensitiveMapSerializer(bridge...)`，因为裸 Map 没有 `@Sensitive` 可发现。
 
 ### 差异二：注解同时服务两条通道
 
-starter 的 `@Sensitive` javadoc 写得很清楚：Jackson 用它选序列化器，AOP 用同一注解改内存。教程本章只有 Jackson 认识它。第 12 章会复用这个注解，所以现在不要改成 `jackson.Sensitive` 这种通道专属名字。
+starter 的 `@Sensitive` 仍是 Jackson 和 AOP 共用的标记。教程本章只有 Jackson 认识它。第 12 章会复用这个注解，所以现在不要改成 `jackson.Sensitive` 这种通道专属名字。
 
-### 差异三：`@Sensitive` 混用两套 Jackson 包
+### 差异三：教程仍混用两套 Jackson 包，starter 已经拆开
 
-这是第 17 章列出的改进项之一。能跑，是因为 `jackson-annotations` 仍然用 `com.fasterxml.jackson.annotation`，而 databind 3 认 `@JacksonAnnotationsInside`。风险是：某一天 Jackson 把这个元注解也迁到 `tools.jackson.annotation`，组合注解会静默失效——失效形态和第 9.3 节的 `BareSensitive` 一模一样，JSON 突然变明文，编译还是绿的。
+教程故意保持 `@JacksonAnnotationsInside` + `@JsonSerialize`，用来讲组合注解。starter 的 `@Sensitive` 不再引用任何 Jackson 类型，混包风险只留在教学代码里。
 
 ---
 
@@ -519,7 +508,7 @@ starter 的 `@Sensitive` javadoc 写得很清楚：Jackson 用它选序列化器
 - `createContextual` 必须返回带该字段规则的**新实例**。返回 `this` 的危害在全局共享实例时才会爆，注解路径会把它藏起来
 - 嵌套 Bean 和 `List<Bean>` 免费递归；裸 `Map` 必须走 `SensitiveMapView`；字符串列表用**父键名**查 `map-keys`
 - Jackson 反射创建序列化器，拿不到 Spring Bean。静态桥是折中，`unbind` 是为了能测
-- 桥没绑上时 starter 和教程都 fail-open，会泄漏明文。这和第 6 章的 fail-loud 原则冲突
+- 桥没绑上时，教程 fail-open；starter 的 `@Sensitive` JSON 会抛错，Logback 盖星号
 
 下一章处理另一条出口：日志。接口打码挡不住 `log.info("phone={}", user.getPhone())`。
 

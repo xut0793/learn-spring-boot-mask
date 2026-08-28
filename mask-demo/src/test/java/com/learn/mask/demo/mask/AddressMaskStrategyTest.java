@@ -29,9 +29,6 @@ class AddressMaskStrategyTest {
     }
 
     private static MaskRule addressRule() {
-        MaskRule maskRule = new MaskRule();
-        maskRule.setKeepPrefix(3);
-        maskRule.setKeepSuffix(0);
-        return maskRule;
+        return MaskRule.of(3, 0);
     }
 }

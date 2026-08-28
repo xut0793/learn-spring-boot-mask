@@ -208,7 +208,7 @@ masking:
 
 这个不一致会让人困惑，第一次配自定义类型的人几乎一定会先写错。缓解手段是文档和示例，但本质上是「IDE 支持」和「一致性」之间的取舍，没有两全的方案。
 
-（还有一个隐性代价：`RuleSet` 每加一个内置类型就要加一个字段 + getter + setter，而这违背了第 4 章「新增类型不改已有文件」的追求。第 4 章练习 4.4 讨论的 `ADDRESS` 问题，根子也在这里。）
+（还有一个隐性代价：`RuleSet` 每加一个内置类型就要加一个字段 + getter + setter，而这违背了第 4 章「新增类型不改已有文件」的追求。这就是 `ADDRESS` 不进枚举、规则写在 `extras` 的原因。）
 
 ### 一个必须防的 null
 
@@ -611,7 +611,7 @@ void readerNeverSeesPartialRule() throws Exception {
 
 ## 7.8 为什么逻辑放在 Service 而不是 Controller
 
-`mask-starter` 把热更新逻辑全写在 `MaskingReloadController` 里。教程版拆出了 `MaskingReloadService`。
+`mask-starter` 和教程一样，热更新逻辑在 `MaskingReloadService`，Controller 只做 HTTP。
 
 理由不是「分层规范」这种教条，而是**可测性**：
 
@@ -714,99 +714,33 @@ assertThat(rule.mask(PHONE)).isEqualTo("138123*5678");
 
 ## 7.10 对照真实实现
 
-本章是教程和 `mask-starter` 差异最大的一章。
+`mask-starter` 已按本章方案落地：可变 `RuleConfig` 只给绑定和热更新写，引擎只读 `volatile` 快照里的不可变 `MaskRule`。
 
-| 方面           | 你的 `ch07`                                 | `mask-starter`                 | 评价                                    |
-| ------------ | ----------------------------------------- | ------------------------------ | ------------------------------------- |
-| 规则对象可变性      | `RuleConfig`（可变，只给写）+ `MaskRule`（不可变，只给读） | `MaskRule` 一个类既承接绑定又给引擎读，可变    | **教程版更安全。** 见下面详述                     |
-| 引擎读规则的路径     | `volatile` 不可变快照 Map                      | 直接读可变的 `MaskRule` 字段           | 真实版存在中间态窗口                            |
-| 热更新是否重建快照    | 是，整体替换                                    | 无快照概念，逐字段 setter               | —                                     |
-| 版本号与快照的顺序    | 先发布快照，后提版本号                               | 无快照，只有提版本号                     | 真实版不存在这个顺序问题（因为没有快照），但代价是有中间态         |
-| 热更新逻辑位置      | `MaskingReloadService`                    | 全在 `MaskingReloadController`   | 教程版可测性更好                              |
-| 并发 reload 保护 | `synchronized`                            | 无                              | 真实版两个并发 reload 可能丢改动                  |
-| 内置类型规则查找     | 统一进 Map 快照                                | `switch` 表达式逐个 case            | 真实版加类型要改 switch                       |
-| `extras` 查找  | 归一化后直接查                                   | 先直查，再遍历做 `equalsIgnoreCase`    | 真实版的遍历是 O(n)，且和 `normalizeCode` 的职责重复 |
-| 未知编码的行为      | 返回 `null`                                 | `computeIfAbsent` **写入**一条默认规则 | 见下面详述                                 |
+| 方面 | 你的 `ch07` | `mask-starter` | 评价 |
+| --- | --- | --- | --- |
+| 规则对象 | `RuleConfig` 写 + `MaskRule` 读 | 同左 | 读路径无中间态 |
+| 引擎读规则 | `volatile` 不可变快照 | 同左 | `ruleOf()` 一次哈希查找 |
+| 热更新顺序 | 写入 → 重建快照 → 提版本 → 清缓存 | 同左，在 `MaskingReloadService` | 第 2 步必须在第 3 步前 |
+| 并发 reload | `synchronized` | 同左 | 两个 reload 不会交错写 |
+| 部分更新 | `RuleConfig` + 负数哨兵 | `RulePatch` 包装类型，`null` 表示不改 | **starter 更干净**，见练习 7.3 |
+| 未知编码 | 返回 `null`（引擎旁路，可能漏脱） | 回落快照里的 `CUSTOM`，**不写入** extras | 生产取向：遮更多，而不是放过 |
 
-真实实现的规则查找：
-
-```119:130:mask-starter/src/main/java/com/learn/mask/config/MaskingProperties.java
-    public MaskRule ruleOf(String code) {
-        String normalized = normalizeCode(code, null);
-        MaskRule extra = extraRule(normalized);
-        if (extra != null) {
-            return extra;
-        }
-        try {
-            return ruleOf(SensitiveType.valueOf(normalized));
-        } catch (IllegalArgumentException ex) {
-            return rules.getExtras().computeIfAbsent(normalized, key -> rule(1, 1));
-        }
-    }
-```
-
-热更新的原地修改：
-
-```54:65:mask-starter/src/main/java/com/learn/mask/web/MaskingReloadController.java
-            if (request.rules() != null && !request.rules().isEmpty()) {
-                request.rules().forEach((key, value) -> {
-                    MaskRule existing = properties.ruleOf(key);
-                    if (value.getKeepPrefix() >= 0) {
-                        existing.setKeepPrefix(value.getKeepPrefix());
-                    }
-                    if (value.getKeepSuffix() >= 0) {
-                        existing.setKeepSuffix(value.getKeepSuffix());
-                    }
-                    existing.setMaskChar(value.getMaskChar());
-                    existing.setEnabled(value.isEnabled());
-                });
-            }
-```
-
-### 差异一：原地修改的中间态
-
-这段代码就是 7.5 节分析的那个问题的实物。四次 setter 作用在一个被并发读取的对象上，中间态是「新前缀 + 旧后缀」。
-
-**这个问题的实际严重程度需要放在语境里看：**
-
-- 触发窗口是几纳秒
-- 需要恰好有请求在这几纳秒内读到这条规则
-- 而且只影响那一个请求的那一个字段
-
-所以它不是一个「必然出事」的 bug，而是一个「长期运行下必然发生若干次、但你永远不会知道」的 bug。对一个教学项目，这个代价可以接受；对一个处理支付信息的生产系统，我会改。
-
-改动成本也不高——就是本章的 `RuleConfig` + 快照方案，大约 60 行。**我倾向于认为这个改动值得做**，因为它同时解决了另一个更常见的问题：`MaskRule` 的字段不是 `volatile`，所以「改了规则，某些线程长期看不到」在理论上是允许的。快照方案的 `volatile` 引用一并解决了可见性。
-
-### 差异二：`computeIfAbsent` 会往配置里写数据
-
-```java
-return rules.getExtras().computeIfAbsent(normalized, key -> rule(1, 1));
-```
-
-这行代码在「查询」方法里做了**写入**。查一个未知编码，会往 `extras` Map 里插一条默认规则。
-
-三个问题：
-
-**1. 违反了「查询不改变状态」。** `ruleOf()` 是引擎热路径上的方法，读者不会预期它有副作用。
-
-**2. `LinkedHashMap` 不是线程安全的。** `extras` 的类型是 `LinkedHashMap`，而 `ruleOf()` 会被多线程并发调用。并发 `computeIfAbsent` 到同一个 `LinkedHashMap` 上，最坏情况是内部结构损坏（HashMap 的并发 put 导致链表成环是经典问题，虽然 JDK 8 之后死循环的概率降低了，但数据丢失和结构异常依然可能）。
-
-这个问题比差异一严重得多：差异一影响一个请求的一个字段，这个可能损坏整个规则表。
-
-**3. 无界增长。** 每个从未见过的编码都会插入一条。如果编码来自不可信输入（比如某个接口允许指定脱敏类型），这是一条内存耗尽的路径。
-
-**教程版的做法**：`ruleOf()` 只读快照，未知编码返回 `null`；`extras` 的写入只发生在热更新路径上，而那条路径有 `synchronized` 保护。
-
-不过要承认，真实版这么写是有动机的：它想让「没配规则的自定义类型」也能按默认规则脱敏，而不是像第 6 章 6.5 节那样返回明文。**动机是对的，实现方式有问题。** 正确的做法是在 `ruleOf()` 里直接返回一个默认规则常量，不写入 Map：
+成品读路径：
 
 ```java
 public MaskRule ruleOf(String code) {
-    MaskRule rule = snapshot.get(normalize(code));
-    return rule != null ? rule : DEFAULT_RULE;      // 不写入
+    String normalized = normalizeCode(code, null);
+    MaskRule found = snapshot.get(normalized);
+    if (found != null) {
+        return found;
+    }
+    return snapshot.get(SensitiveType.CUSTOM.name());
 }
 ```
 
-这一行改动同时解决了三个问题，还顺手修掉了第 6 章 6.5 节那个「规则缺失返回明文」的隐患。**这是我在整个项目里认为性价比最高的一处改动。**
+热更新只改 `RuleConfig`，然后 `rebuildSnapshot()`。`computeIfAbsent` 只出现在 reload 的 `configOf()` 里，有锁保护，不会在读路径膨胀 extras。
+
+教程仍返回 `null`，是为了让第 6 章「规则缺失旁路」的讨论能对照代码看见。接到自己项目时，跟 starter 走：未知 code 回落 `CUSTOM`。
 
 ---
 

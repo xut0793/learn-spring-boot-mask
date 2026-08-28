@@ -29,8 +29,8 @@ class MaskingApiTest {
 
     @Test
     void idCardRuleKeepsSixPrefix() {
-        assertThat(properties.ruleOf(SensitiveType.ID_CARD).getKeepPrefix()).isEqualTo(6);
-        assertThat(properties.ruleOf(SensitiveType.ID_CARD).getKeepSuffix()).isEqualTo(4);
+        assertThat(properties.ruleOf(SensitiveType.ID_CARD).keepPrefix()).isEqualTo(6);
+        assertThat(properties.ruleOf(SensitiveType.ID_CARD).keepSuffix()).isEqualTo(4);
     }
 
     @Test
@@ -93,7 +93,8 @@ class MaskingApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.phone").value("138****5678"))
                 .andExpect(jsonPath("$.email").value("z*******@example.com"))
-                .andExpect(jsonPath("$.expressNo").value("SF12*******0123"));
+                .andExpect(jsonPath("$.expressNo").value("SF12*******0123"))
+                .andExpect(jsonPath("$.addressDetail").value("Chaoyang Road **"));
     }
 
     @Test
@@ -117,20 +118,74 @@ class MaskingApiTest {
     }
 
     @Test
-    void reloadBumpsRuleVersion() throws Exception {
-        long before = properties.getRuleVersion();
-        mockMvc.perform(post("/api/admin/masking/reload")
+    void csCannotUnmaskEmail() throws Exception {
+        mockMvc.perform(post("/api/unmask")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"rules\":{\"PHONE\":{\"keepPrefix\":2,\"keepSuffix\":2,\"maskChar\":\"*\",\"enabled\":true}}}")
-                        .with(SecurityMockMvcRequestPostProcessors.httpBasic("admin", "admin123")))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.ruleVersion").value(before + 1));
+                        .content("{\"userId\":1,\"field\":\"email\"}")
+                        .with(SecurityMockMvcRequestPostProcessors.httpBasic("cs", "cs123")))
+                .andExpect(status().isForbidden());
+    }
 
+    @Test
+    void reloadChangesPhoneMaskThenRestores() throws Exception {
         mockMvc.perform(post("/api/admin/masking/reload")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"rules\":{\"PHONE\":{\"keepPrefix\":3,\"keepSuffix\":4,\"maskChar\":\"*\",\"enabled\":true}}}")
+                        .content("{\"rules\":{\"PHONE\":{\"keepPrefix\":2,\"keepSuffix\":2}}}")
                         .with(SecurityMockMvcRequestPostProcessors.httpBasic("admin", "admin123")))
                 .andExpect(status().isOk());
+        try {
+            mockMvc.perform(get("/api/jackson/users/1")
+                            .with(SecurityMockMvcRequestPostProcessors.httpBasic("user", "user123")))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.phone").value("13*******78"));
+        } finally {
+            mockMvc.perform(post("/api/admin/masking/reload")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"rules\":{\"PHONE\":{\"keepPrefix\":3,\"keepSuffix\":4,\"maskChar\":\"*\",\"enabled\":true}}}")
+                            .with(SecurityMockMvcRequestPostProcessors.httpBasic("admin", "admin123")))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Test
+    void dialTokenDoesNotContainPlaintextAndCanBeRedeemed() throws Exception {
+        String body = mockMvc.perform(post("/api/unmask/dial")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"field\":\"phone\"}")
+                        .with(SecurityMockMvcRequestPostProcessors.httpBasic("cs", "cs123")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token").value(not("13812345678")))
+                .andExpect(jsonPath("$.value").doesNotExist())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String token = body.replaceAll(".*\"token\":\"([^\"]+)\".*", "$1");
+        mockMvc.perform(post("/api/unmask/redeem-dial")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + token + "\"}")
+                        .with(SecurityMockMvcRequestPostProcessors.httpBasic("cs", "cs123")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.value").value("13812345678"));
+    }
+
+    @Test
+    void viewTokenCanRefresh() throws Exception {
+        String body = mockMvc.perform(post("/api/unmask")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"userId\":1,\"field\":\"phone\"}")
+                        .with(SecurityMockMvcRequestPostProcessors.httpBasic("cs", "cs123")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.value").value("13812345678"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String token = body.replaceAll(".*\"token\":\"([^\"]+)\".*", "$1");
+        mockMvc.perform(post("/api/unmask/refresh")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"token\":\"" + token + "\"}")
+                        .with(SecurityMockMvcRequestPostProcessors.httpBasic("cs", "cs123")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.value").value("13812345678"));
     }
 
     @Test

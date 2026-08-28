@@ -1,6 +1,7 @@
 package com.learn.mask.demo.mapper;
 
 import com.learn.mask.demo.domain.UserEntity;
+import com.learn.mask.demo.mask.AddressSensitiveTypeHandler;
 import com.learn.mask.demo.mask.ExpressSensitiveTypeHandler;
 import com.learn.mask.mybatis.BankCardSensitiveTypeHandler;
 import com.learn.mask.mybatis.EmailSensitiveTypeHandler;
@@ -24,7 +25,7 @@ public interface UserMaskedMapper {
             @Result(column = "id_card", property = "idCard", typeHandler = IdCardSensitiveTypeHandler.class),
             @Result(column = "email", property = "email", typeHandler = EmailSensitiveTypeHandler.class),
             @Result(column = "bank_card", property = "bankCard", typeHandler = BankCardSensitiveTypeHandler.class),
-            @Result(column = "address_detail", property = "addressDetail"),
+            @Result(column = "address_detail", property = "addressDetail", typeHandler = AddressSensitiveTypeHandler.class),
             @Result(column = "express_no", property = "expressNo", typeHandler = ExpressSensitiveTypeHandler.class)
     })
     UserEntity findByIdMasked(Long id);

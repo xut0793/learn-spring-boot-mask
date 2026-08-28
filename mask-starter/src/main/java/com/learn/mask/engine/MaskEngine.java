@@ -1,12 +1,12 @@
 package com.learn.mask.engine;
 
 import com.learn.mask.annotation.SensitiveType;
-import com.learn.mask.cache.MaskCache;
+import com.learn.mask.cache.MaskResultCache;
 import com.learn.mask.config.MaskRule;
-import com.learn.mask.config.MaskingProperties;
+import com.learn.mask.config.MaskSettings;
 import com.learn.mask.context.MaskContext;
 import com.learn.mask.context.MaskRole;
-import com.learn.mask.metrics.MaskingMetrics;
+import com.learn.mask.metrics.MaskRecorder;
 import com.learn.mask.strategy.MaskStrategy;
 import com.learn.mask.strategy.MaskStrategyRegistry;
 import com.learn.mask.support.MaskUtils;
@@ -15,25 +15,26 @@ import java.time.Duration;
 
 /**
  * 脱敏引擎：角色旁路、幂等跳过、缓存与指标都在这里汇合，四个通道共用同一入口。
+ * 依赖 {@link MaskSettings} / {@link MaskResultCache} / {@link MaskRecorder}，不绑具体配置或 Caffeine。
  */
 public class MaskEngine {
 
-    private final MaskingProperties properties;
+    private final MaskSettings settings;
     private final MaskStrategyRegistry registry;
-    private final MaskCache cache;
+    private final MaskResultCache cache;
     private final AlreadyMaskedDetector alreadyMaskedDetector;
-    private final MaskingMetrics metrics;
+    private final MaskRecorder recorder;
 
-    public MaskEngine(MaskingProperties properties,
+    public MaskEngine(MaskSettings settings,
                       MaskStrategyRegistry registry,
-                      MaskCache cache,
+                      MaskResultCache cache,
                       AlreadyMaskedDetector alreadyMaskedDetector,
-                      MaskingMetrics metrics) {
-        this.properties = properties;
+                      MaskRecorder recorder) {
+        this.settings = settings;
         this.registry = registry;
-        this.cache = cache;
+        this.cache = cache == null ? MaskResultCache.NO_OP : cache;
         this.alreadyMaskedDetector = alreadyMaskedDetector;
-        this.metrics = metrics;
+        this.recorder = recorder == null ? MaskRecorder.NO_OP : recorder;
     }
 
     /**
@@ -49,45 +50,40 @@ public class MaskEngine {
     public String apply(String raw, SensitiveType type, String code, MaskContext context) {
         long start = System.nanoTime();
         MaskRole role = context == null ? MaskRole.USER : context.current();
-        String resolvedCode = MaskingProperties.normalizeCode(code, type);
+        String resolvedCode = MaskStrategyRegistry.resolve(code, type);
         try {
-            if (raw == null || MaskUtils.isBlank(raw) || !properties.isEnabled()) {
-                record(resolvedCode, role, MaskAction.BYPASS, start);
-                return raw;
+            if (MaskUtils.isBlank(raw)) {
+                return record(raw, resolvedCode, role, MaskAction.BYPASS, start);
+            }
+            if (!settings.isEnabled()) {
+                return record(raw, resolvedCode, role, MaskAction.DISABLED, start);
             }
             if (context != null && context.shouldBypass()) {
-                record(resolvedCode, role, MaskAction.BYPASS, start);
-                return raw;
+                return record(raw, resolvedCode, role, MaskAction.BYPASS, start);
             }
             MaskStrategy strategy = registry.get(resolvedCode);
-            MaskRule rule = properties.ruleOf(resolvedCode);
-            if (strategy == null || rule == null || !rule.isEnabled()) {
-                record(resolvedCode, role, MaskAction.BYPASS, start);
-                return raw;
+            MaskRule rule = settings.ruleOf(resolvedCode);
+            if (strategy == null || rule == null || !rule.enabled()) {
+                return record(raw, resolvedCode, role, MaskAction.BYPASS, start);
             }
             if (alreadyMaskedDetector.isAlreadyMasked(raw, strategy, rule)) {
-                record(resolvedCode, role, MaskAction.SKIP_ALREADY_MASKED, start);
-                return raw;
+                return record(raw, resolvedCode, role, MaskAction.SKIP_ALREADY_MASKED, start);
             }
             String cached = cache.get(resolvedCode, raw);
             if (cached != null) {
-                record(resolvedCode, role, MaskAction.MASK, start);
-                return cached;
+                return record(cached, resolvedCode, role, MaskAction.MASK, start);
             }
             String masked = strategy.mask(raw, rule);
             cache.put(resolvedCode, raw, masked);
-            record(resolvedCode, role, MaskAction.MASK, start);
-            return masked;
+            return record(masked, resolvedCode, role, MaskAction.MASK, start);
         } catch (RuntimeException ex) {
-            record(resolvedCode, role, MaskAction.FAIL, start);
+            record(raw, resolvedCode, role, MaskAction.FAIL, start);
             throw ex;
         }
     }
 
-    private void record(String typeCode, MaskRole role, MaskAction action, long startNanos) {
-        if (metrics == null) {
-            return;
-        }
-        metrics.record(typeCode, role, action, Duration.ofNanos(System.nanoTime() - startNanos));
+    private String record(String result, String typeCode, MaskRole role, MaskAction action, long startNanos) {
+        recorder.record(typeCode, role, action, Duration.ofNanos(System.nanoTime() - startNanos));
+        return result;
     }
 }

@@ -29,7 +29,7 @@ sequenceDiagram
     Note over Entity: 从此明文不在内存里
 ```
 
-第 3 章实验七已经演示过它的固有弱点：`addressDetail` 漏了 `@Result(typeHandler=...)`，就漏脱。**没被点名的列，默认是明文。**
+第 3 章实验七已经演示过它的固有弱点：MyBatis 必须逐列点名 TypeHandler。Demo 为地址补了 `AddressSensitiveTypeHandler`，所以 `/api/db` 现在会打码 `addressDetail`；**把那一行 `typeHandler` 删掉再请求，就会漏脱。** 没被点名的列，默认是明文。
 
 ---
 
@@ -192,7 +192,7 @@ mvn -f mask-tutorial/pom.xml test "-Dtest=SensitiveTypeHandlerTest"
 
 **练习 11.2** 为什么不能让 TypeHandler 去读 Entity 字段上的 `@Sensitive`，从而免掉逐列 `@Result`？给出至少两条理由。
 
-**练习 11.3** Demo 的 `UserMaskedMapper` 漏了 `address_detail` 的 TypeHandler。补上需要改哪几处？漏掉时 Jackson 通道开着能否兜住？
+**练习 11.3** Demo 的 `AddressSensitiveTypeHandler` 为什么传 `AddressMaskStrategy.ADDRESS` 字符串，而不是 `SensitiveType` 枚举？如果漏掉 `address_detail` 这一列的 TypeHandler，Jackson 通道开着能否兜住？
 
 ---
 
@@ -217,6 +217,6 @@ verify(ps).setString(1, "138****5678");   // 错误实现下绿，正确实现�
 
 ### 练习 11.3
 
-要补：`@Result(column = "address_detail", property = "addressDetail", typeHandler = ...)`，以及一个 `AddressSensitiveTypeHandler`（Demo 的地址策略在 demo 模块，starter 枚举有 `ADDRESS` 但没有默认策略）。
+starter 枚举里没有 `ADDRESS`，自定义类型走 `SensitiveTypeHandler(String code)`，编码和策略类上的 `public static final String ADDRESS` 是同一个常量。还要在 `UserMaskedMapper` 的 `@Result` 里点名这个 Handler。
 
-Jackson **兜不住 MyBatis 通道的「查询接口」**，如果这个接口返回的是已经映射好的 Entity、且字段上没有 `@Sensitive`。Demo 的 `/api/db` 走的是 MyBatis 通道，`addressDetail` 既没 TypeHandler 也未必有 Jackson 注解，所以漏了。出口通道救不了「你根本没走到出口、直接把 Entity 当 JSON 用了但字段没标」——如果 Entity 就是响应体且字段有 `@Sensitive`，Jackson 能兜；实验七暴露的是「点名制漏点」。
+Jackson **兜不住 MyBatis 通道的「查询接口」**，如果这个接口返回的是已经映射好的 Entity、且字段上没有 `@Sensitive`。Demo 的 `/api/db` 走的是 MyBatis 通道，`UserEntity.addressDetail` 没有 Jackson 注解，所以漏了 TypeHandler 就是明文。出口通道救不了「你根本没走到出口、直接把 Entity 当 JSON 用了但字段没标」——如果 Entity 就是响应体且字段有 `@Sensitive`，Jackson 能兜；实验七暴露的是「点名制漏点」。

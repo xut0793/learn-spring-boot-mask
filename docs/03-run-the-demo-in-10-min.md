@@ -327,8 +327,10 @@ curl -s -u admin:admin123 http://localhost:8080/api/admin/masking/rules
     "bankCard": { "enabled": true, "keepPrefix": 4, "keepSuffix": 4, "maskChar": "*" },
     "email":    { "enabled": true, "keepPrefix": 1, "keepSuffix": 0, "maskChar": "*" },
     "custom":   { "enabled": true, "keepPrefix": 1, "keepSuffix": 1, "maskChar": "*" },
-    "address":  { "enabled": true, "keepPrefix": 3, "keepSuffix": 0, "maskChar": "*" },
-    "extras": { "EXPRESS": { "enabled": true, "keepPrefix": 2, "keepSuffix": 4, "maskChar": "*" } }
+    "extras": {
+      "ADDRESS": { "enabled": true, "keepPrefix": 3, "keepSuffix": 0, "maskChar": "*" },
+      "EXPRESS": { "enabled": true, "keepPrefix": 2, "keepSuffix": 4, "maskChar": "*" }
+    }
   },
   "bypassRoles": ["ADMIN"],
   "unmaskRoles": ["ADMIN", "CS"]
@@ -417,17 +419,20 @@ curl -s -u user:user123 http://localhost:8080/api/db/users/1               # MyB
 ```yaml
 masking:
   extra-map-keys:
+    detail: ADDRESS
+    addressDetail: ADDRESS
+    address_detail: ADDRESS
     expressNo: EXPRESS
     express_no: EXPRESS
 ```
 
 顺便注意 `contacts` 里的 key 叫 `phone`（DTO 版本里叫 `value`），依然被正确识别——因为它就叫 `phone`，命中了内置映射。反过来说，如果一个 Map 里手机号的 key 叫 `mobile`，默认就漏了，得自己配。这是字段名映射相比注解的固有弱点（第 9 章 9.5 节）。
 
-**`/api/db/users/1` 的输出**（MyBatis 通道），有一个地方不一样，请你先自己找出来：
+**`/api/db/users/1` 的输出**（MyBatis 通道）和 Jackson 一样会打码地址，但机制完全不同——不是注解，是 Mapper 里逐列点名 TypeHandler：
 
 ```json
 {
-  "addressDetail": "Chaoyang Road 88",
+  "addressDetail": "Chaoyang Road **",
   "bankCard": "6222***********0123",
   "city": "Beijing",
   "email": "z*******@example.com",
@@ -439,9 +444,7 @@ masking:
 }
 ```
 
-`addressDetail` 是 **`Chaoyang Road 88`——明文没有被脱敏**。
-
-原因在 `UserMaskedMapper.findByIdMasked` 的注解里（`mask-demo/src/main/java/com/learn/mask/demo/mapper/UserMaskedMapper.java`）：
+`addressDetail` 能打码，是因为 Demo 自己写了 `AddressSensitiveTypeHandler`（编码用 `AddressMaskStrategy.ADDRESS`），并在 `UserMaskedMapper.findByIdMasked` 里点名：
 
 ```java
 @Results({
@@ -449,14 +452,12 @@ masking:
         @Result(column = "id_card", property = "idCard", typeHandler = IdCardSensitiveTypeHandler.class),
         @Result(column = "email", property = "email", typeHandler = EmailSensitiveTypeHandler.class),
         @Result(column = "bank_card", property = "bankCard", typeHandler = BankCardSensitiveTypeHandler.class),
-        @Result(column = "address_detail", property = "addressDetail"),   // ← 没有 typeHandler
+        @Result(column = "address_detail", property = "addressDetail", typeHandler = AddressSensitiveTypeHandler.class),
         @Result(column = "express_no", property = "expressNo", typeHandler = ExpressSensitiveTypeHandler.class)
 })
 ```
 
-`address_detail` 那一行**没有指定 `typeHandler`**。
-
-这暴露了 MyBatis 通道的核心弱点：**它是「逐列显式指定」的，漏一列就是一次泄露，而且编译器不会告诉你。** 对比 Jackson 通道——注解写在 DTO 字段上，任何接口返回这个 DTO 都自动生效，漏的可能性小得多。
+这暴露了 MyBatis 通道的核心弱点：**它是「逐列显式指定」的，漏一列就是一次泄露，而且编译器不会告诉你。** 把上面 `address_detail` 那行的 `typeHandler` 删掉再请求，就会变回明文 `Chaoyang Road 88`。对比 Jackson 通道——注解写在 DTO 字段上，任何接口返回这个 DTO 都自动生效，漏的可能性小得多。
 
 这也是为什么 `UserEntity` 上没有 `@Sensitive` 注解（第 11 章会讲这个设计），以及为什么第 2 章 2.4 节的对比表里，MyBatis 通道的缺点写的是「灵活性差」。
 
@@ -549,7 +550,7 @@ curl -s -u admin:admin123 http://localhost:8080/actuator/metrics/masking.duratio
 | 改规则不重启立即生效 | 第 7 章 |
 | `ruleVersion` 是什么、为什么要有 | 第 7 章 7.5 节、第 8 章 |
 | `as-map` 没有注解也能脱敏 | 第 9 章 9.5 节 |
-| `/api/db` 的 `addressDetail` 漏了 | 第 11 章 |
+| `/api/db` 靠逐列 TypeHandler，漏一列就漏脱 | 第 11 章 |
 | `skip_already_masked` 计数为 6 | 第 6 章 6.5 节、第 13 章 |
 | `masking.invoke` / `masking.duration` 指标 | 第 8 章 |
 
@@ -563,7 +564,7 @@ curl -s -u admin:admin123 http://localhost:8080/actuator/metrics/masking.duratio
 - 日志是一个**完全独立的出口**，接口脱敏对它无效，必须单独处理
 - 角色旁路对**所有通道**生效，包括日志——这可能不是你想要的，需要根据项目要求评估
 - 规则可以运行时热更新，靠 `ruleVersion` 参与缓存 key 实现旧缓存自动失效
-- MyBatis 通道是「逐列显式指定」的，漏一列就泄露一列，Demo 里的 `addressDetail` 就是活例子
+- MyBatis 通道是「逐列显式指定」的，漏一列就泄露一列；Demo 已经为地址补了 `AddressSensitiveTypeHandler`，删掉它就能复现泄露
 - 脱敏全过程有 Micrometer 打点，可按 `type` / `role` / `result` 三个维度下钻
 
 下一章开始动手写代码。我们会从一个会腐烂的 `if-else` 出发，一步步重构成策略模式，并且给项目加一个 starter 里根本没有的脱敏类型。

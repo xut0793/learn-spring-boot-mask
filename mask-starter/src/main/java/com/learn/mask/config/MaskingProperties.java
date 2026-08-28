@@ -1,20 +1,25 @@
 package com.learn.mask.config;
 
 import com.learn.mask.annotation.SensitiveType;
+import com.learn.mask.strategy.MaskStrategyRegistry;
+import org.springframework.beans.factory.InitializingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * 脱敏总开关、通道、角色、规则与缓存配置，前缀为 {@code masking}。规则变更后调用 {@link #bumpRuleVersion()} 使缓存失效。
+ * 脱敏总开关、通道、角色、规则与缓存配置，前缀为 {@code masking}。
+ * <p>
+ * 写路径改可变的 {@link RuleSet}；读路径只看 {@link #snapshot}。
+ * 热更新必须先 {@link #rebuildSnapshot()}，再 {@link #bumpRuleVersion()}。
  */
 @ConfigurationProperties(prefix = "masking")
-public class MaskingProperties {
+public class MaskingProperties implements InitializingBean, MaskSettings {
 
     private boolean enabled = true;
     private final Channels channels = new Channels();
@@ -31,6 +36,44 @@ public class MaskingProperties {
      */
     private Map<String, String> extraMapKeys = new LinkedHashMap<>();
     private final AtomicLong ruleVersion = new AtomicLong(1);
+    /**
+     * 引擎实际读取的规则表。{@code volatile} 保证整体替换可见：
+     * 其他线程要么看到旧 Map，要么看到新 Map。
+     */
+    private volatile Map<String, MaskRule> snapshot;
+
+    public MaskingProperties() {
+        rebuildSnapshot();
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        rebuildSnapshot();
+    }
+
+    /**
+     * 把可变 {@link RuleSet} 转成不可变快照并发布。
+     * 热更新写入 {@code RuleSet} 后必须调用，否则引擎仍读旧规则。
+     */
+    public void rebuildSnapshot() {
+        Map<String, MaskRule> next = new HashMap<>();
+        next.put(SensitiveType.PHONE.name(), rules.getPhone().toRule());
+        next.put(SensitiveType.ID_CARD.name(), rules.getIdCard().toRule());
+        next.put(SensitiveType.BANK_CARD.name(), rules.getBankCard().toRule());
+        next.put(SensitiveType.EMAIL.name(), rules.getEmail().toRule());
+        next.put(SensitiveType.CUSTOM.name(), rules.getCustom().toRule());
+        rules.getExtras().forEach((code, config) -> {
+            if (code != null && config != null) {
+                next.put(normalizeCode(code, null), config.toRule());
+            }
+        });
+        this.snapshot = Map.copyOf(next);
+    }
+
+    /** 当前快照的只读视图。 */
+    public Map<String, MaskRule> currentRules() {
+        return snapshot;
+    }
 
     public boolean isEnabled() {
         return enabled;
@@ -100,33 +143,22 @@ public class MaskingProperties {
         ruleVersion.incrementAndGet();
     }
 
-    /** 按内置类型取对应规则。 */
+    /** 按内置类型取快照中的规则。 */
     public MaskRule ruleOf(SensitiveType type) {
-        SensitiveType resolved = type == null ? SensitiveType.CUSTOM : type;
-        return switch (resolved) {
-            case PHONE -> rules.getPhone();
-            case ID_CARD -> rules.getIdCard();
-            case BANK_CARD -> rules.getBankCard();
-            case EMAIL -> rules.getEmail();
-            case CUSTOM -> rules.getCustom();
-            case ADDRESS -> rules.getAddress();
-        };
+        return ruleOf(type == null ? null : type.name());
     }
 
     /**
-     * 按类型编码取规则。先查 {@code masking.rules.extras}，再回落到内置枚举。
+     * 按类型编码取规则。只读快照，一次 volatile 读加一次哈希查找。
+     * 未命中时回落 {@link SensitiveType#CUSTOM}，与策略表一致，避免未知 code 漏脱。
      */
     public MaskRule ruleOf(String code) {
         String normalized = normalizeCode(code, null);
-        MaskRule extra = extraRule(normalized);
-        if (extra != null) {
-            return extra;
+        MaskRule found = snapshot.get(normalized);
+        if (found != null) {
+            return found;
         }
-        try {
-            return ruleOf(SensitiveType.valueOf(normalized));
-        } catch (IllegalArgumentException ex) {
-            return rules.getExtras().computeIfAbsent(normalized, key -> rule(1, 1));
-        }
+        return snapshot.get(SensitiveType.CUSTOM.name());
     }
 
     /**
@@ -147,94 +179,69 @@ public class MaskingProperties {
         return normalizeCode(extra, null);
     }
 
+    /**
+     * 编码归一化，委托 {@link MaskStrategyRegistry#resolve(String, SensitiveType)}，
+     * 与策略表共用同一实现。
+     */
     public static String normalizeCode(String code, SensitiveType type) {
-        if (code != null && !code.isBlank()) {
-            return code.trim().toUpperCase(Locale.ROOT);
-        }
-        return (type == null ? SensitiveType.CUSTOM : type).name();
+        return MaskStrategyRegistry.resolve(code, type);
     }
 
-    private MaskRule extraRule(String normalizedCode) {
-        Map<String, MaskRule> extras = rules.getExtras();
-        if (extras == null || extras.isEmpty()) {
-            return null;
-        }
-        MaskRule direct = extras.get(normalizedCode);
-        if (direct != null) {
-            return direct;
-        }
-        for (Map.Entry<String, MaskRule> entry : extras.entrySet()) {
-            if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(normalizedCode)) {
-                return entry.getValue();
-            }
-        }
-        return null;
-    }
-
-    /** 各类型保留前后缀规则，对应 YAML {@code masking.rules}。 */
+    /** 各类型保留前后缀规则，对应 YAML {@code masking.rules}。只给绑定和热更新写。 */
     public static class RuleSet {
-        private MaskRule phone = rule(3, 4);
-        private MaskRule idCard = rule(6, 4);
-        private MaskRule bankCard = rule(4, 4);
-        private MaskRule email = rule(1, 0);
-        private MaskRule custom = defaultCustomRule();
-        private MaskRule address = rule(3, 0);
+        private RuleConfig phone = new RuleConfig(3, 4);
+        private RuleConfig idCard = new RuleConfig(6, 4);
+        private RuleConfig bankCard = new RuleConfig(4, 4);
+        private RuleConfig email = new RuleConfig(1, 0);
+        private RuleConfig custom = new RuleConfig(1, 1);
         /** 业务自定义类型规则，键为策略编码，与 {@code MaskStrategy#code()} 对应。 */
-        private Map<String, MaskRule> extras = new LinkedHashMap<>();
+        private Map<String, RuleConfig> extras = new LinkedHashMap<>();
 
-        public MaskRule getPhone() {
+        public RuleConfig getPhone() {
             return phone;
         }
 
-        public void setPhone(MaskRule phone) {
-            this.phone = phone;
+        public void setPhone(RuleConfig phone) {
+            this.phone = phone == null ? new RuleConfig(3, 4) : phone;
         }
 
-        public MaskRule getIdCard() {
+        public RuleConfig getIdCard() {
             return idCard;
         }
 
-        public void setIdCard(MaskRule idCard) {
-            this.idCard = idCard;
+        public void setIdCard(RuleConfig idCard) {
+            this.idCard = idCard == null ? new RuleConfig(6, 4) : idCard;
         }
 
-        public MaskRule getBankCard() {
+        public RuleConfig getBankCard() {
             return bankCard;
         }
 
-        public void setBankCard(MaskRule bankCard) {
-            this.bankCard = bankCard;
+        public void setBankCard(RuleConfig bankCard) {
+            this.bankCard = bankCard == null ? new RuleConfig(4, 4) : bankCard;
         }
 
-        public MaskRule getEmail() {
+        public RuleConfig getEmail() {
             return email;
         }
 
-        public void setEmail(MaskRule email) {
-            this.email = email;
+        public void setEmail(RuleConfig email) {
+            this.email = email == null ? new RuleConfig(1, 0) : email;
         }
 
-        public MaskRule getCustom() {
+        public RuleConfig getCustom() {
             return custom;
         }
 
-        public void setCustom(MaskRule custom) {
-            this.custom = custom;
+        public void setCustom(RuleConfig custom) {
+            this.custom = custom == null ? new RuleConfig(1, 1) : custom;
         }
 
-        public MaskRule getAddress() {
-            return address;
-        }
-
-        public void setAddress(MaskRule address) {
-            this.address = address;
-        }
-
-        public Map<String, MaskRule> getExtras() {
+        public Map<String, RuleConfig> getExtras() {
             return extras;
         }
 
-        public void setExtras(Map<String, MaskRule> extras) {
+        public void setExtras(Map<String, RuleConfig> extras) {
             this.extras = extras == null ? new LinkedHashMap<>() : extras;
         }
     }
@@ -249,21 +256,7 @@ public class MaskingProperties {
         keys.put("email", SensitiveType.EMAIL);
         keys.put("bankCard", SensitiveType.BANK_CARD);
         keys.put("bank_card", SensitiveType.BANK_CARD);
-        keys.put("detail", SensitiveType.ADDRESS);
-        keys.put("addressDetail", SensitiveType.ADDRESS);
-        keys.put("address_detail", SensitiveType.ADDRESS);
         return keys;
-    }
-
-    private static MaskRule defaultCustomRule() {
-        return rule(1, 1);
-    }
-
-    private static MaskRule rule(int prefix, int suffix) {
-        MaskRule rule = new MaskRule();
-        rule.setKeepPrefix(prefix);
-        rule.setKeepSuffix(suffix);
-        return rule;
     }
 
     /** 四个切点开关。Jackson 与 AOP/MyBatis 同时开启时由 {@link MaskingChannelValidator} 告警或失败。 */
@@ -317,7 +310,7 @@ public class MaskingProperties {
 
     /** 明文到脱敏结果的本地缓存。 */
     public static class Cache {
-        private boolean enabled = true;
+        private boolean enabled = false;
         private long maxSize = 10_000;
         private long expireAfterAccessMinutes = 10;
 
@@ -371,7 +364,8 @@ public class MaskingProperties {
     /** AES-GCM 可逆脱敏密钥。接口仍输出星号，还原接口用令牌换明文。 */
     public static class Reversible {
         private boolean enabled = true;
-        private String secretKey = "demo-key-not-for-prod-32b!!";
+        private String secretKey = "demo-key-not-for-production-use!";
+        private List<String> fields = new ArrayList<>(List.of("phone", "idCard", "identityCard"));
 
         public boolean isEnabled() {
             return enabled;
@@ -387,6 +381,21 @@ public class MaskingProperties {
 
         public void setSecretKey(String secretKey) {
             this.secretKey = secretKey;
+        }
+
+        public List<String> getFields() {
+            return fields;
+        }
+
+        public void setFields(List<String> fields) {
+            this.fields = fields == null ? new ArrayList<>() : fields;
+        }
+
+        public boolean allows(String field) {
+            if (field == null || fields == null || fields.isEmpty()) {
+                return false;
+            }
+            return fields.stream().anyMatch(item -> item != null && item.equalsIgnoreCase(field));
         }
     }
 }

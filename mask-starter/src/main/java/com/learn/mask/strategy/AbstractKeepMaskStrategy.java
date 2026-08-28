@@ -10,7 +10,7 @@ public abstract class AbstractKeepMaskStrategy implements MaskStrategy {
 
     @Override
     public String mask(String raw, MaskRule rule) {
-        if (MaskUtils.isBlank(raw) || rule == null || !rule.isEnabled()) {
+        if (MaskUtils.isBlank(raw) || rule == null || !rule.enabled()) {
             return raw;
         }
         return MaskUtils.keepMask(raw, rule);

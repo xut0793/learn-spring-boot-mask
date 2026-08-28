@@ -10,6 +10,9 @@ public final class MaskUtils {
     private MaskUtils() {
     }
 
+    /**
+     * 是否为空白。{@code value} 可以为 null，null 视为空白。
+     */
     public static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -19,9 +22,9 @@ public final class MaskUtils {
         if (raw == null) {
             return null;
         }
-        int prefix = Math.max(rule.getKeepPrefix(), 0);
-        int suffix = Math.max(rule.getKeepSuffix(), 0);
-        char maskChar = rule.getMaskChar();
+        int prefix = Math.max(rule.keepPrefix(), 0);
+        int suffix = Math.max(rule.keepSuffix(), 0);
+        char maskChar = rule.maskChar();
         int len = raw.length();
         if (len == 0) {
             return raw;
@@ -38,9 +41,9 @@ public final class MaskUtils {
         if (isBlank(raw)) {
             return false;
         }
-        int prefix = Math.max(rule.getKeepPrefix(), 0);
-        int suffix = Math.max(rule.getKeepSuffix(), 0);
-        char maskChar = rule.getMaskChar();
+        int prefix = Math.max(rule.keepPrefix(), 0);
+        int suffix = Math.max(rule.keepSuffix(), 0);
+        char maskChar = rule.maskChar();
         int len = raw.length();
         if (len <= prefix + suffix) {
             return raw.chars().allMatch(c -> c == maskChar);

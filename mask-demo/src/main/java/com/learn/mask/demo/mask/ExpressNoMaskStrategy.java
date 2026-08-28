@@ -13,12 +13,15 @@ import java.util.regex.Pattern;
  * Demo 自定义快递单号脱敏：保留承运商字母前缀和末尾国家码，数字段按保留前后缀打星。
  * <p>
  * starter 枚举中没有 EXPRESS。本策略通过 {@link #code()} 注册，字段使用
- * {@code @Sensitive(code = DemoSensitiveTypes.EXPRESS)}。
+ * {@code @Sensitive(code = ExpressNoMaskStrategy.EXPRESS)}。
  */
 @Component
 public class ExpressNoMaskStrategy implements MaskStrategy {
 
-    private static final Pattern EXPRESS = Pattern.compile("^([A-Za-z]*)(\\d+)([A-Za-z]*)$");
+    /** 业务自定义编码。字段注解、TypeHandler、YAML extras 都引用它，避免手写字符串写错。 */
+    public static final String EXPRESS = "EXPRESS";
+
+    private static final Pattern EXPRESS_PATTERN = Pattern.compile("^([A-Za-z]*)(\\d+)([A-Za-z]*)$");
 
     @Override
     public SensitiveType type() {
@@ -27,16 +30,16 @@ public class ExpressNoMaskStrategy implements MaskStrategy {
 
     @Override
     public String code() {
-        return DemoSensitiveTypes.EXPRESS;
+        return EXPRESS;
     }
 
     @Override
     public String mask(String raw, MaskRule rule) {
-        if (MaskUtils.isBlank(raw) || rule == null || !rule.isEnabled()) {
+        if (MaskUtils.isBlank(raw) || rule == null || !rule.enabled()) {
             return raw;
         }
         String trimmed = raw.strip();
-        Matcher matcher = EXPRESS.matcher(trimmed);
+        Matcher matcher = EXPRESS_PATTERN.matcher(trimmed);
         if (matcher.matches()) {
             return matcher.group(1) + MaskUtils.keepMask(matcher.group(2), rule) + matcher.group(3);
         }
@@ -49,10 +52,10 @@ public class ExpressNoMaskStrategy implements MaskStrategy {
             return false;
         }
         String trimmed = raw.strip();
-        if (trimmed.indexOf(rule.getMaskChar()) >= 0) {
+        if (trimmed.indexOf(rule.maskChar()) >= 0) {
             return true;
         }
-        Matcher matcher = EXPRESS.matcher(trimmed);
+        Matcher matcher = EXPRESS_PATTERN.matcher(trimmed);
         if (matcher.matches()) {
             return MaskUtils.alreadyKeepMasked(matcher.group(2), rule);
         }

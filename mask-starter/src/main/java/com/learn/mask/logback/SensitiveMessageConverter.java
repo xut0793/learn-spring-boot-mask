@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 /**
  * Logback 转换器，配置 {@code %sensitiveMsg} 后按正则扫描日志中的手机号、证件号、邮箱、卡号并脱敏。
  * 无法注入 Spring，通过 {@link MaskingSpringBridge} 取引擎。
+ * 引擎未 bind 时仍用星号盖住匹配段，避免启动窗口写明文。
  */
 public class SensitiveMessageConverter extends ClassicConverter {
 
@@ -24,11 +25,16 @@ public class SensitiveMessageConverter extends ClassicConverter {
     @Override
     public String convert(ILoggingEvent event) {
         String message = event.getFormattedMessage();
+        if (message == null) {
+            return null;
+        }
         MaskingProperties properties = MaskingSpringBridge.properties();
         MaskEngine engine = MaskingSpringBridge.engine();
-        if (message == null || properties == null || engine == null
-                || !properties.isEnabled() || !properties.getChannels().isLogback()) {
+        if (properties != null && (!properties.isEnabled() || !properties.getChannels().isLogback())) {
             return message;
+        }
+        if (engine == null || properties == null) {
+            return redactUnbound(message);
         }
         String masked = replace(message, PHONE, SensitiveType.PHONE, engine);
         masked = replace(masked, ID_CARD, SensitiveType.ID_CARD, engine);
@@ -42,6 +48,23 @@ public class SensitiveMessageConverter extends ClassicConverter {
         while (matcher.find()) {
             matcher.appendReplacement(builder, Matcher.quoteReplacement(
                     engine.apply(matcher.group(1), type, MaskingSpringBridge.context())));
+        }
+        matcher.appendTail(builder);
+        return builder.toString();
+    }
+
+    private static String redactUnbound(String source) {
+        String masked = starMatch(source, PHONE);
+        masked = starMatch(masked, ID_CARD);
+        masked = starMatch(masked, EMAIL);
+        return starMatch(masked, BANK_CARD);
+    }
+
+    private static String starMatch(String source, Pattern pattern) {
+        Matcher matcher = pattern.matcher(source);
+        StringBuilder builder = new StringBuilder();
+        while (matcher.find()) {
+            matcher.appendReplacement(builder, Matcher.quoteReplacement("*".repeat(matcher.group().length())));
         }
         matcher.appendTail(builder);
         return builder.toString();

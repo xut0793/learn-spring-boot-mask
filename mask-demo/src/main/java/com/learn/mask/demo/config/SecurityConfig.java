@@ -1,5 +1,7 @@
 package com.learn.mask.demo.config;
 
+import com.learn.mask.crypto.SensitiveFieldLookup;
+import com.learn.mask.demo.service.UserService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -22,9 +24,14 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
-                        .requestMatchers("/api/unmask").hasAnyRole("ADMIN", "CS")
+                        .requestMatchers("/api/unmask", "/api/unmask/**").hasAnyRole("ADMIN", "CS")
                         .anyRequest().authenticated())
                 .build();
+    }
+
+    @Bean
+    public SensitiveFieldLookup sensitiveFieldLookup(UserService userService) {
+        return (subjectId, field) -> userService.fieldValue(Long.valueOf(subjectId), field);
     }
 
     @Bean

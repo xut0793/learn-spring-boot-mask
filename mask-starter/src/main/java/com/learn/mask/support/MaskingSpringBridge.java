@@ -23,6 +23,12 @@ public final class MaskingSpringBridge {
         context = maskContext;
     }
 
+    public static void unbind() {
+        engine = null;
+        properties = null;
+        context = null;
+    }
+
     public static MaskEngine engine() {
         return engine;
     }

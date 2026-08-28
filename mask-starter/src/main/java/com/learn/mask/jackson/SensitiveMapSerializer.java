@@ -47,6 +47,9 @@ public class SensitiveMapSerializer extends ValueSerializer<Map<String, ?>> {
         if (raw instanceof String text) {
             String typeCode = properties.typeCodeOf(key);
             if (typeCode != null && properties.isEnabled() && properties.getChannels().isJackson()) {
+                if (engine == null) {
+                    throw new IllegalStateException("Masking engine is not bound");
+                }
                 gen.writeString(engine.apply(text, null, typeCode, maskContext));
             } else {
                 gen.writeString(text);
@@ -69,6 +72,9 @@ public class SensitiveMapSerializer extends ValueSerializer<Map<String, ?>> {
                 } else if (item instanceof String text) {
                     String typeCode = properties.typeCodeOf(key);
                     if (typeCode != null && properties.isEnabled() && properties.getChannels().isJackson()) {
+                        if (engine == null) {
+                            throw new IllegalStateException("Masking engine is not bound");
+                        }
                         gen.writeString(engine.apply(text, null, typeCode, maskContext));
                     } else {
                         gen.writeString(text);

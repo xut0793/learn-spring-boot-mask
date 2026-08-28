@@ -4,13 +4,14 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.learn.mask.annotation.SensitiveType;
 import com.learn.mask.config.MaskingProperties;
+import com.learn.mask.strategy.MaskStrategyRegistry;
 
 import java.time.Duration;
 
 /**
  * 明文 → 脱敏结果缓存。键包含规则版本，热更新后旧结果自动失效。
  */
-public class MaskCache {
+public class MaskCache implements MaskResultCache {
 
     private final MaskingProperties properties;
     private final Cache<String, String> cache;
@@ -20,6 +21,7 @@ public class MaskCache {
         this.cache = Caffeine.newBuilder()
                 .maximumSize(Math.max(properties.getCache().getMaxSize(), 1))
                 .expireAfterAccess(Duration.ofMinutes(Math.max(properties.getCache().getExpireAfterAccessMinutes(), 1)))
+                .recordStats()
                 .build();
     }
 
@@ -49,7 +51,19 @@ public class MaskCache {
         cache.invalidateAll();
     }
 
+    public double hitRate() {
+        return cache.stats().hitRate();
+    }
+
+    public double estimatedSize() {
+        return cache.estimatedSize();
+    }
+
+    public long evictionCount() {
+        return cache.stats().evictionCount();
+    }
+
     private String key(String typeCode, String raw) {
-        return properties.getRuleVersion() + ":" + MaskingProperties.normalizeCode(typeCode, null) + ":" + raw;
+        return properties.getRuleVersion() + ":" + MaskStrategyRegistry.normalize(typeCode) + ":" + raw;
     }
 }

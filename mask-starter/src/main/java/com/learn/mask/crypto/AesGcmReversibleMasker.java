@@ -1,7 +1,5 @@
 package com.learn.mask.crypto;
 
-import com.learn.mask.config.MaskingProperties;
-
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
@@ -13,7 +11,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
- * AES-GCM 可逆脱敏实现。密文为 Base64(IV + ciphertext)，密钥来自 {@code masking.reversible.secret-key}。
+ * AES-GCM 可逆脱敏实现。密文为 Base64(IV + ciphertext)，密钥必须是 16 或 32 个 UTF-8 字节。
  */
 public class AesGcmReversibleMasker implements ReversibleMasker {
 
@@ -21,11 +19,24 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
     private static final int GCM_IV_LENGTH = 12;
     private static final int GCM_TAG_LENGTH = 128;
 
-    private final MaskingProperties properties;
+    private final SecretKey secretKey;
     private final SecureRandom random = new SecureRandom();
 
-    public AesGcmReversibleMasker(MaskingProperties properties) {
-        this.properties = properties;
+    public AesGcmReversibleMasker(String secretKey) {
+        this.secretKey = secretKeySpec(secretKey);
+    }
+
+    public AesGcmReversibleMasker(com.learn.mask.config.MaskingProperties properties) {
+        this(properties.getReversible().getSecretKey());
+    }
+
+    static SecretKey secretKeySpec(String secretKey) {
+        byte[] keyBytes = secretKey == null ? new byte[0] : secretKey.getBytes(StandardCharsets.UTF_8);
+        if (keyBytes.length != 16 && keyBytes.length != 32) {
+            throw new IllegalStateException(
+                    "masking.reversible.secret-key must be 16 or 32 UTF-8 bytes, got " + keyBytes.length);
+        }
+        return new SecretKeySpec(keyBytes, "AES");
     }
 
     @Override
@@ -37,7 +48,7 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
             byte[] iv = new byte[GCM_IV_LENGTH];
             random.nextBytes(iv);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.ENCRYPT_MODE, secretKey(), new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
             byte[] cipherBytes = cipher.doFinal(plainText.getBytes(StandardCharsets.UTF_8));
             ByteBuffer buffer = ByteBuffer.allocate(iv.length + cipherBytes.length);
             buffer.put(iv);
@@ -55,23 +66,19 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
         }
         try {
             byte[] decoded = Base64.getDecoder().decode(cipherText);
+            if (decoded.length <= GCM_IV_LENGTH) {
+                throw new IllegalStateException("Failed to decrypt reversible field");
+            }
             ByteBuffer buffer = ByteBuffer.wrap(decoded);
             byte[] iv = new byte[GCM_IV_LENGTH];
             buffer.get(iv);
             byte[] cipherBytes = new byte[buffer.remaining()];
             buffer.get(cipherBytes);
             Cipher cipher = Cipher.getInstance(TRANSFORMATION);
-            cipher.init(Cipher.DECRYPT_MODE, secretKey(), new GCMParameterSpec(GCM_TAG_LENGTH, iv));
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH, iv));
             return new String(cipher.doFinal(cipherBytes), StandardCharsets.UTF_8);
         } catch (GeneralSecurityException | IllegalArgumentException ex) {
             throw new IllegalStateException("Failed to decrypt reversible field", ex);
         }
-    }
-
-    private SecretKey secretKey() {
-        byte[] keyBytes = properties.getReversible().getSecretKey().getBytes(StandardCharsets.UTF_8);
-        byte[] aesKey = new byte[32];
-        System.arraycopy(keyBytes, 0, aesKey, 0, Math.min(keyBytes.length, 32));
-        return new SecretKeySpec(aesKey, "AES");
     }
 }

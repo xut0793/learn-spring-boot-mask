@@ -22,14 +22,20 @@ public class MaskingChannelValidator implements InitializingBean {
     public void afterPropertiesSet() {
         MaskingProperties.Channels channels = properties.getChannels();
         boolean conflict = channels.isJackson() && (channels.isAop() || channels.isMybatis());
-        if (!conflict) {
-            return;
+        if (conflict) {
+            String message = "masking.channels: jackson is enabled together with aop and/or mybatis; "
+                    + "mutating channels change in-memory values. Idempotent skip will prevent double masking.";
+            if (channels.isStrict()) {
+                throw new IllegalStateException(message);
+            }
+            log.warn(message);
         }
-        String message = "masking.channels: jackson is enabled together with aop and/or mybatis; "
-                + "mutating channels change in-memory values. Idempotent skip will prevent double masking.";
-        if (channels.isStrict()) {
-            throw new IllegalStateException(message);
+        if (properties.getDebug().isHeaderRoleEnabled()) {
+            log.warn("masking.debug.header-role-enabled is true; any authenticated caller can bypass masking with the role header");
         }
-        log.warn(message);
+        if (!properties.isEnabled()) {
+            log.error("masking.enabled is false; all sensitive fields will be returned in plaintext. "
+                    + "If this is not intentional, check configuration immediately");
+        }
     }
 }

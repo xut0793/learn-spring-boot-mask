@@ -88,8 +88,8 @@
     {
       "name": "masking.cache.enabled",
       "type": "java.lang.Boolean",
-      "description": "是否缓存明文到脱敏结果。热更新规则后缓存会失效。",
-      "defaultValue": true
+      "description": "是否缓存明文到脱敏结果。内置 keepMask 默认关闭；热更新规则后缓存会失效。",
+      "defaultValue": false
     },
     {
       "name": "masking.cache.max-size",
@@ -139,11 +139,18 @@
     {
       "name": "masking.reversible.secret-key",
       "type": "java.lang.String",
-      "description": "AES-GCM 密钥，生产环境请用环境变量覆盖，勿使用默认值。"
+      "description": "AES-GCM 密钥，必须是 16 或 32 个 UTF-8 字节。生产请用环境变量覆盖。",
+      "defaultValue": "demo-key-not-for-production-use!"
+    },
+    {
+      "name": "masking.reversible.fields",
+      "type": "java.util.List<java.lang.String>",
+      "description": "允许走还原接口的字段名，大小写不敏感。空列表表示全部拒绝。",
+      "defaultValue": ["phone", "idCard", "identityCard"]
     },
     {
       "name": "masking.rules.phone",
-      "type": "com.learn.mask.config.MaskRule",
+      "type": "com.learn.mask.config.RuleConfig",
       "description": "手机号规则，默认保留前 3 后 4。"
     },
     {
@@ -172,7 +179,7 @@
     },
     {
       "name": "masking.rules.id-card",
-      "type": "com.learn.mask.config.MaskRule",
+      "type": "com.learn.mask.config.RuleConfig",
       "description": "身份证号规则，默认保留前 6 后 4。"
     },
     {
@@ -201,7 +208,7 @@
     },
     {
       "name": "masking.rules.bank-card",
-      "type": "com.learn.mask.config.MaskRule",
+      "type": "com.learn.mask.config.RuleConfig",
       "description": "银行卡号规则，默认保留前 4 后 4。"
     },
     {
@@ -230,7 +237,7 @@
     },
     {
       "name": "masking.rules.email",
-      "type": "com.learn.mask.config.MaskRule",
+      "type": "com.learn.mask.config.RuleConfig",
       "description": "邮箱规则，默认保留本地部分前 1 位。"
     },
     {
@@ -259,7 +266,7 @@
     },
     {
       "name": "masking.rules.custom",
-      "type": "com.learn.mask.config.MaskRule",
+      "type": "com.learn.mask.config.RuleConfig",
       "description": "通用 CUSTOM 规则，默认保留前 1 后 1。"
     },
     {
@@ -287,42 +294,13 @@
       "defaultValue": "*"
     },
     {
-      "name": "masking.rules.address",
-      "type": "com.learn.mask.config.MaskRule",
-      "description": "地址规则。有门牌号时由业务 AddressMaskStrategy 遮盖末尾数字；否则按保留前后缀打星。"
-    },
-    {
-      "name": "masking.rules.address.enabled",
-      "type": "java.lang.Boolean",
-      "description": "是否启用该类型脱敏。",
-      "defaultValue": true
-    },
-    {
-      "name": "masking.rules.address.keep-prefix",
-      "type": "java.lang.Integer",
-      "description": "无门牌号时保留前缀长度。",
-      "defaultValue": 3
-    },
-    {
-      "name": "masking.rules.address.keep-suffix",
-      "type": "java.lang.Integer",
-      "description": "无门牌号时保留后缀长度。",
-      "defaultValue": 0
-    },
-    {
-      "name": "masking.rules.address.mask-char",
-      "type": "java.lang.Character",
-      "description": "掩码字符。",
-      "defaultValue": "*"
-    },
-    {
       "name": "masking.rules.extras",
-      "type": "java.util.Map<java.lang.String,com.learn.mask.config.MaskRule>",
+      "type": "java.util.Map<java.lang.String,com.learn.mask.config.RuleConfig>",
       "description": "业务自定义类型规则，键为 MaskStrategy.code()，无需改 starter 枚举。例如 EXPRESS。"
     },
     {
       "name": "masking.rules.extras.*",
-      "type": "com.learn.mask.config.MaskRule",
+      "type": "com.learn.mask.config.RuleConfig",
       "description": "某一业务自定义类型的脱敏规则。"
     },
     {
@@ -372,8 +350,7 @@
         { "value": "ID_CARD" },
         { "value": "BANK_CARD" },
         { "value": "EMAIL" },
-        { "value": "CUSTOM" },
-        { "value": "ADDRESS" }
+        { "value": "CUSTOM" }
       ]
     },
     {

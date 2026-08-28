@@ -63,9 +63,15 @@ public class SensitiveTypeHandler extends BaseTypeHandler<String> {
     }
 
     private String mask(String raw) {
+        if (raw == null) {
+            return null;
+        }
         MaskingProperties properties = MaskingSpringBridge.properties();
         MaskEngine engine = MaskingSpringBridge.engine();
-        if (raw == null || properties == null || engine == null || !properties.isEnabled() || !properties.getChannels().isMybatis()) {
+        if (properties == null || engine == null) {
+            throw new IllegalStateException("Masking engine is not bound");
+        }
+        if (!properties.isEnabled() || !properties.getChannels().isMybatis()) {
             return raw;
         }
         return engine.apply(raw, type, code, MaskingSpringBridge.context());

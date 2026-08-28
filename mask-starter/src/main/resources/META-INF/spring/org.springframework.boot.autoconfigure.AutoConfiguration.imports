@@ -1,3 +1,6 @@
+com.learn.mask.config.MaskingCacheAutoConfiguration
+com.learn.mask.config.MaskingMetricsAutoConfiguration
+com.learn.mask.config.MaskingCacheMetricsAutoConfiguration
 com.learn.mask.config.MaskingAutoConfiguration
 com.learn.mask.config.JacksonMaskingAutoConfiguration
 com.learn.mask.config.AopMaskingAutoConfiguration

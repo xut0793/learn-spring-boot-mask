@@ -46,9 +46,6 @@ class MaskStrategyTest {
     }
 
     private static MaskRule rule(int prefix, int suffix) {
-        MaskRule rule = new MaskRule();
-        rule.setKeepPrefix(prefix);
-        rule.setKeepSuffix(suffix);
-        return rule;
+        return MaskRule.of(prefix, suffix);
     }
 }

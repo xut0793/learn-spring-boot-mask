@@ -163,9 +163,7 @@ public record MaskRule(boolean enabled, int keepPrefix, int keepSuffix, char mas
 }
 ```
 
-> **这里用 `record` 是有意的，而且会一直保持到最后。** 规则会被四个通道并发读取，一旦可变，热更新改字段的瞬间就可能有请求读到「前一半旧值、后一半新值」的规则。第 7 章的做法是让**配置容器**可变、让它每次返回一个不可变的规则快照。
-> 
-> 顺带说一句：`mask-starter` 的 `MaskRule` 是可变 JavaBean，和这里的取舍不同。第 7 章 7.7 节会对比两者的代价。
+> **这里用 `record` 是有意的，而且会一直保持到最后。** 规则会被四个通道并发读取，一旦可变，热更新改字段的瞬间就可能有请求读到「前一半旧值、后一半新值」的规则。第 7 章的做法是让**配置容器**可变、让它每次返回一个不可变的规则快照。`mask-starter` 现在也是同一套：`RuleConfig` 承接绑定，`MaskRule` 是读路径快照。
 
 ### `code()` —— 「不改枚举也能扩展」的关键
 
@@ -621,21 +619,31 @@ public class ExpressNoMaskStrategy implements MaskStrategy {
 masking:
   rules:
     extras:
+      ADDRESS:
+        keep-prefix: 3
+        keep-suffix: 0
       EXPRESS:
         keep-prefix: 2
         keep-suffix: 4
   extra-map-keys:
+    detail: ADDRESS
+    addressDetail: ADDRESS
+    address_detail: ADDRESS
     expressNo: EXPRESS
+    express_no: EXPRESS
 ```
 
-字段上用：
+字段上用策略类自己的常量，不必再搞一个汇总枚举类：
 
 ```java
 @Sensitive(code = ExpressNoMaskStrategy.EXPRESS)
 private String expressNo;
+
+@Sensitive(code = AddressMaskStrategy.ADDRESS)
+private String detail;
 ```
 
-这就是第 3 章实验一里 `expressNo` 变成 `SF12*******0123` 的全部机制。
+这就是第 3 章实验一里 `expressNo` 变成 `SF12*******0123`、`address.detail` 变成 `Chaoyang Road **` 的全部机制。编码常量和 `code()` 放在同一个类里，注解、TypeHandler、YAML 键引用同一处，手写 `"EXPRESS"` 才容易写错。
 
 ---
 
@@ -688,9 +696,9 @@ assertThat(phone.alreadyMasked("138####5678", MaskRule.of(3, 4))).isFalse();
 
 | 方面                                    | 你的 `ch04`           | `mask-starter`                                      | 为什么                                                                                                               |
 | ------------------------------------- | ------------------- | --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `MaskRule`                            | `record`，不可变        | 可变 JavaBean，有 getter/setter                         | starter 让 `@ConfigurationProperties` 直接绑定到 `MaskRule` 并在热更新时原地改字段。教程选择让配置容器可变、规则保持不可变快照。**两种做法的代价对比见第 7 章 7.7 节** |
-| 规则字段访问                                | `rule.keepPrefix()` | `rule.getKeepPrefix()`                              | 同上，JavaBean 规范要求 getter                                                                                           |
-| `SensitiveType`                       | 5 个值                | 6 个值，多一个 `ADDRESS`                                  | `ADDRESS` 是给接入方用的占位类型，**starter 自己不提供默认策略**（见下）                                                                   |
+| `MaskRule`                            | `record`，不可变        | `record`，不可变；绑定走 `RuleConfig`                       | 两边都是「可变容器 + 不可变快照」。代价对比和落地细节见第 7 章 7.5 / 7.10 节 |
+| 规则字段访问                                | `rule.keepPrefix()` | `rule.keepPrefix()`                                 | 读路径都是 record 访问器                                                                                           |
+| `SensitiveType`                       | 5 个值                | 5 个值                                                  | 枚举值 = starter 保证有默认策略。地址、快递单号都在 Demo 用 `code()` 扩展，不进枚举 |
 | 包结构                                   | 全在 `ch04` 一个包       | 拆成 `annotation` / `strategy` / `config` / `support` | 依赖边界，第 18 章 18.1 节                                                                                                |
 | 策略是否 Spring Bean                      | 纯 POJO              | 在 `MaskingAutoConfiguration` 里声明为 `@Bean`           | 第 8 章接入 Spring                                                                                                    |
 | `MaskStrategyRegistry.withBuiltins()` | 有，方便测试              | 没有，由自动配置装配                                          | 教程为了脱离 Spring 也能跑测试                                                                                               |
@@ -713,16 +721,16 @@ public interface MaskStrategy {
 }
 ```
 
-`MaskUtils.keepMask` 和你写的完全一致，只是访问器不同：
+`MaskUtils.keepMask` 和你写的一致，访问器也是 record 风格：
 
 ```18:35:mask-starter/src/main/java/com/learn/mask/support/MaskUtils.java
     public static String keepMask(String raw, MaskRule rule) {
         if (raw == null) {
             return null;
         }
-        int prefix = Math.max(rule.getKeepPrefix(), 0);
-        int suffix = Math.max(rule.getKeepSuffix(), 0);
-        char maskChar = rule.getMaskChar();
+        int prefix = Math.max(rule.keepPrefix(), 0);
+        int suffix = Math.max(rule.keepSuffix(), 0);
+        char maskChar = rule.maskChar();
         int len = raw.length();
         if (len == 0) {
             return raw;
@@ -736,27 +744,47 @@ public interface MaskStrategy {
     }
 ```
 
-### 一个可以商量的设计：`ADDRESS` 枚举值
+### 对照成品：地址也不进枚举
 
-`mask-starter` 的 `SensitiveType` 里有 `ADDRESS`，但 starter **没有** `AddressMaskStrategy`——实现在 `mask-demo` 里：
+`mask-starter` 的 `SensitiveType` 和教程一样只有五个值：
 
-```9:23:mask-starter/src/main/java/com/learn/mask/annotation/SensitiveType.java
+```9:19:mask-starter/src/main/java/com/learn/mask/annotation/SensitiveType.java
 public enum SensitiveType {
+    /** 手机号，默认保留前 3 后 4。 */
     PHONE,
+    /** 身份证号，默认保留前 6 后 4。 */
     ID_CARD,
+    /** 银行卡号，默认保留前 4 后 4。 */
     BANK_CARD,
+    /** 邮箱，默认保留本地部分前 1 位。 */
     EMAIL,
-    CUSTOM,
-    /**
-     * 地址。starter 不提供默认策略，由接入方实现 {@code MaskStrategy} 并注册为 Spring Bean。
-     */
-    ADDRESS
+    /** 通用规则，对应 {@code masking.rules.custom} 的保留前后缀配置。 */
+    CUSTOM
 }
 ```
 
-这意味着：如果业务用了 `@Sensitive(type = SensitiveType.ADDRESS)` 但**忘了注册策略**，注册表会回落到 `CUSTOM`，字段按「保留前 1 后 1」脱敏。不会泄露（兜底生效了），但结果和预期不符，而且没有任何警告。
+地址格式地域差异极大（中文「XX路88号」vs 英文「88 XX Road」），starter 给一个「看似合理」的默认实现，往往比不提供更危险。所以 `ADDRESS` 和 `EXPRESS` 走同一条路：Demo 自己写策略、自己配 `extras`。
 
-按本章 4.9 节的逻辑，`ADDRESS` 本来应该走 `@Sensitive(code = "ADDRESS")` 这条自定义编码的路子，而不是占一个枚举值——枚举值的语义应该是「starter 保证有默认实现」。这是第 17 章 17.8 节列出的可改进点之一，也是本章的练习 4.4。
+```21:36:mask-demo/src/main/java/com/learn/mask/demo/mask/AddressMaskStrategy.java
+public class AddressMaskStrategy implements MaskStrategy {
+
+    /** 业务自定义编码。字段注解、TypeHandler、YAML extras 都引用它，避免手写字符串写错。 */
+    public static final String ADDRESS = "ADDRESS";
+
+    @Override
+    public SensitiveType type() {
+        return SensitiveType.CUSTOM;
+    }
+
+    @Override
+    public String code() {
+        return ADDRESS;
+    }
+```
+
+枚举值的语义是「starter 保证有默认实现」。业务类型只占用 `code()` 字符串，`RuleSet` 也不必为每个业务类型加字段——规则写在 `masking.rules.extras`。
+
+剩下的风险：字段写了 `@Sensitive(code = AddressMaskStrategy.ADDRESS)` 但忘了给策略加 `@Component`。注册表会回落到 `CUSTOM`，规则却仍可能命中 `extras.ADDRESS`。不会泄露，但结果和门牌号算法不符，而且没有任何警告。这是练习 4.4。
 
 ---
 
@@ -820,10 +848,10 @@ public boolean alreadyMasked(String raw, MaskRule rule) {
 
 请说出它在什么场景下会导致**敏感数据泄露**（不是「结果难看」，是真的泄露）。
 
-**练习 4.4** 阅读 `mask-starter` 的 `SensitiveType` 枚举和 `mask-demo` 的 `AddressMaskStrategy`。回答：
+**练习 4.4** 阅读 `mask-demo` 的 `AddressMaskStrategy` 和 `ExpressNoMaskStrategy`。回答：
 
-1. 如果业务用了 `@Sensitive(type = SensitiveType.ADDRESS)` 但忘了注册 `AddressMaskStrategy`，运行时会发生什么？
-2. 这个问题有几种解决方案？各自的代价是什么？
+1. 为什么 starter 的 `SensitiveType` 里没有 `ADDRESS`？如果当初放进枚举但不提供默认策略，会有什么问题？
+2. 字段写了 `@Sensitive(code = AddressMaskStrategy.ADDRESS)` 但忘了给策略加 `@Component`，运行时会发生什么？
 
 ---
 
@@ -956,23 +984,18 @@ if (len <= prefix + suffix) {
 
 ### 练习 4.4
 
-**1. 运行时会发生什么**
+**1. 为什么不进枚举**
 
-`MaskStrategyRegistry.get("ADDRESS")` 查不到策略，回落到 `CustomPatternMaskStrategy`，字段按 `masking.rules.address` 的配置走通用「保留前后缀」逻辑。
+枚举值 = starter 保证有默认实现。地址格式因国家、语言、门牌号位置而异，框架给的默认算法几乎对不上任何具体业务，反而让人以为「已经处理好了」。不提供默认实现、也不占枚举位，接入方必须自己写 `MaskStrategy` 并注册——和 `EXPRESS` 同一条扩展路径。
 
-以 `mask-demo` 的配置（`address: keep-prefix: 3, keep-suffix: 0`）和数据 `Chaoyang Road 88` 为例，结果会是 `Cha*************`——门牌号确实被遮住了，但整个街道名也没了。
+如果只把 `ADDRESS` 放进枚举、却不提供策略：注解可以写成 `@Sensitive(type = SensitiveType.ADDRESS)`，编译通过，运行时注册表却查不到算法，静默回落 `CUSTOM`。这比「枚举里根本没有这个类型、你必须写 `code()`」更难发现。
 
-**不会泄露**（兜底生效），但**结果和预期不符，且没有任何警告或日志**。这是最难排查的一类问题：功能"能用"，只是不对。开发者会怀疑规则配错了、注解没生效、Jackson 版本不对，很难想到「策略压根没注册」。
+**2. 忘了注册策略时**
 
-**2. 几种解决方案及代价**
+`MaskStrategyRegistry.get("ADDRESS")` 查不到，回落到 `CustomPatternMaskStrategy`。`ruleOf("ADDRESS")` 仍会命中 Demo 的 `masking.rules.extras.ADDRESS`（前 3 后 0），因为规则和策略是两张表。
 
-| 方案                                          | 做法                                                        | 代价                                                                                                     |
-| ------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| **A. 从枚举里删掉 `ADDRESS`**                     | 让它走 `@Sensitive(code = "ADDRESS")` 自定义编码路径，和 `EXPRESS` 一样 | 破坏性变更，已经在用 `SensitiveType.ADDRESS` 的代码要改。但语义最干净：枚举值 == starter 保证有默认实现                                 |
-| **B. starter 提供一个默认 `AddressMaskStrategy`** | 补一个按保留前缀打星的实现                                             | 地址格式的地域差异极大（中文「XX路88号」vs 英文「88 XX Road」，门牌号在头还是在尾都不一样），starter 给的默认实现很可能不符合任何具体业务的预期，反而制造「以为对了其实不对」的错觉 |
-| **C. 启动时校验**                                | 检查所有枚举值是否都有对应策略，缺失就打 WARN 或按 `strict` 配置启动失败              | 需要在自动配置里加校验逻辑（可以复用 `MaskingChannelValidator` 的模式）。**代价最小、收益最直接**——把「静默降级」变成「启动就告诉你」                    |
-| **D. 注册表未命中时打 WARN**                        | 回落 `CUSTOM` 的同时记一条日志                                      | 实现最简单，但在请求路径上打日志有性能和刷屏风险，得做去重或限流。适合作为 C 的补充                                                            |
+以 `Chaoyang Road 88` 为例，门牌号算法本应得到 `Chaoyang Road **`；回落后变成 `Cha*************`——门牌号被遮了，整条街道名也没了。
 
-**推荐 C**。它符合一个通用原则：**能在启动时发现的问题，绝不留到运行时**。第 13 章的 `MaskingChannelValidator` 用的就是这个思路——通道冲突这种配置问题在 `afterPropertiesSet()` 里就报出来，而不是等到某个请求打码错了才被发现。
+**不会泄露**（兜底生效），但**结果和预期不符，且没有任何警告或日志**。这是最难排查的一类问题：功能「能用」，只是不对。开发者会怀疑规则配错了、注解没生效、Jackson 版本不对，很难想到「策略压根没注册」。
 
-顺带说，方案 B 的困境很有代表性：**框架提供「看似合理」的默认实现，有时比不提供更危险。** 不提供会让接入方立刻发现「我需要自己写一个」；提供了则会让人以为已经处理好了。`mask-starter` 选择不提供 `AddressMaskStrategy`，这个决策方向是对的，缺的只是方案 C 那道校验。
+缓解：启动时校验「extras 里出现过的 code 必须有对应策略」（可复用 `MaskingChannelValidator` 的模式）。内置枚举可以穷举；自定义 code 只能校验「已配置但未注册」这一侧。

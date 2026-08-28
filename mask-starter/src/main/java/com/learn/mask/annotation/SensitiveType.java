@@ -16,9 +16,5 @@ public enum SensitiveType {
     /** 邮箱，默认保留本地部分前 1 位。 */
     EMAIL,
     /** 通用规则，对应 {@code masking.rules.custom} 的保留前后缀配置。 */
-    CUSTOM,
-    /**
-     * 地址。starter 不提供默认策略，由接入方实现 {@code MaskStrategy} 并注册为 Spring Bean。
-     */
-    ADDRESS
+    CUSTOM
 }

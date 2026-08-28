@@ -12,24 +12,33 @@ import java.util.regex.Pattern;
 /**
  * Demo 自定义地址脱敏：保留道路/小区名称，将末尾门牌号替换为掩码。
  * <p>
- * 接入方式：实现 {@link MaskStrategy} 并注册为 Spring Bean，starter 会按 {@link #type()} 自动纳入策略表。
+ * starter 枚举中没有 ADDRESS。本策略通过 {@link #code()} 注册，字段使用
+ * {@code @Sensitive(code = AddressMaskStrategy.ADDRESS)}，规则写在 {@code masking.rules.extras.ADDRESS}。
  * 示例：{@code Chaoyang Road 88} → {@code Chaoyang Road **}；{@code 朝阳路88号} → {@code 朝阳路**号}。
- * 没有门牌号时回落到 {@code masking.rules.address} 的保留前后缀规则。
+ * 没有门牌号时回落到 extras 规则的保留前后缀。
  */
 @Component
 public class AddressMaskStrategy implements MaskStrategy {
+
+    /** 业务自定义编码。字段注解、TypeHandler、YAML extras 都引用它，避免手写字符串写错。 */
+    public static final String ADDRESS = "ADDRESS";
 
     private static final Pattern HOUSE_NUMBER = Pattern.compile("^(.*?)(\\d+)(号)?$");
     private static final Pattern ALREADY_MASKED = Pattern.compile("^.+\\*+(号)?$");
 
     @Override
     public SensitiveType type() {
-        return SensitiveType.ADDRESS;
+        return SensitiveType.CUSTOM;
+    }
+
+    @Override
+    public String code() {
+        return ADDRESS;
     }
 
     @Override
     public String mask(String raw, MaskRule rule) {
-        if (MaskUtils.isBlank(raw) || rule == null || !rule.isEnabled()) {
+        if (MaskUtils.isBlank(raw) || rule == null || !rule.enabled()) {
             return raw;
         }
         String trimmed = raw.strip();
@@ -37,7 +46,7 @@ public class AddressMaskStrategy implements MaskStrategy {
         if (matcher.matches()) {
             String street = matcher.group(1);
             String unit = matcher.group(3) == null ? "" : matcher.group(3);
-            return street + String.valueOf(rule.getMaskChar()).repeat(2) + unit;
+            return street + String.valueOf(rule.maskChar()).repeat(2) + unit;
         }
         return MaskUtils.keepMask(trimmed, rule);
     }

@@ -26,7 +26,7 @@ class SensitiveMessageConverterTest {
 
     @AfterEach
     void tearDown() {
-        MaskingSpringBridge.bind(null, null, null);
+        MaskingSpringBridge.unbind();
         MaskContext.clearHeaderRole();
     }
 
@@ -56,5 +56,43 @@ class SensitiveMessageConverterTest {
         assertThat(converted).doesNotContain("zhangsan@example.com");
         assertThat(converted).contains("138****5678");
         assertThat(converted).contains("z*******@example.com");
+    }
+
+    @Test
+    void idCardAndEmailAreMaskedBeforeBankCardPattern() {
+        MaskingProperties properties = new MaskingProperties();
+        MaskEngine engine = new MaskEngine(
+                properties,
+                new MaskStrategyRegistry(List.of(
+                        new PhoneMaskStrategy(),
+                        new IdCardMaskStrategy(),
+                        new BankCardMaskStrategy(),
+                        new EmailMaskStrategy(),
+                        new CustomPatternMaskStrategy()
+                )),
+                new MaskCache(properties),
+                new AlreadyMaskedDetector(),
+                new MaskingMetrics(new SimpleMeterRegistry())
+        );
+        MaskingSpringBridge.bind(engine, properties, new MaskContext(properties));
+
+        LoggingEvent event = new LoggingEvent();
+        event.setMessage("id=110101199003078515 card=6222021234567890123");
+        String converted = new SensitiveMessageConverter().convert(event);
+
+        assertThat(converted).contains("110101********8515");
+        assertThat(converted).contains("6222***********0123");
+        assertThat(converted).doesNotContain("110101199003078515");
+    }
+
+    @Test
+    void unboundStillRedactsPlaintext() {
+        LoggingEvent event = new LoggingEvent();
+        event.setMessage("loaded user phone=13812345678 email=zhangsan@example.com");
+        String converted = new SensitiveMessageConverter().convert(event);
+
+        assertThat(converted).doesNotContain("13812345678");
+        assertThat(converted).doesNotContain("zhangsan@example.com");
+        assertThat(converted).contains("***********");
     }
 }

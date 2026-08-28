@@ -55,7 +55,8 @@ mask-tutorial/
     ch10/ ...  # Logback 通道
     ch11/ ...  # MyBatis 通道
     ch12/ ...  # AOP 通道
-    ch14/ ...  # AES 可逆脱敏
+    ch13/ ...  # 通道开关与冲突校验
+    ch14/ ...  # 授权还原（线程 A）+ 可选 AES 凭证（线程 B）
   src/test/java/com/learn/mask/tutorial/
     ch04/ ... ch14/                          # 各章验证用例 + 课后练习答案
 ```
@@ -122,7 +123,7 @@ mask-tutorial/
   - 实验四：`cs` 调 `/api/unmask` → 拿回明文 + 每次不同的 token；`user` 调 → 403
   - 实验五：看控制台日志 → 明文被 Logback 通道拦住了；**但 `ADMIN` 请求产生的日志是明文**（角色旁路对日志同样生效，这个行为需要评估）
   - 实验六：`POST /api/admin/masking/reload` 改规则 → 不重启，下一次请求立即生效，`ruleVersion` 自增
-  - 实验七（加分）：四通道横向对比 → `/api/db` 的 `addressDetail` 漏了脱敏，暴露 MyBatis 通道「逐列显式指定」的固有弱点
+  - 实验七（加分）：四通道横向对比 → `/api/db` 靠逐列 TypeHandler 打码；删掉地址列的 Handler 就会漏脱
 - 3.4 看一眼 `/actuator/metrics/masking.invoke`：脱敏是可观测的（含 `result` 标签必须小写这个坑）
 - 3.5 现象锚点表：把你看到的每个现象映射到解释它的章节
 
@@ -156,7 +157,7 @@ mask-tutorial/
 
 - 6.1 为什么需要一个「唯一入口」：四个通道不能各写一套逻辑
 - 6.2 引擎只依赖三个窄接口：`MaskSettings` / `MaskResultCache` / `MaskRecorder`
-- 6.3 `MaskAction` 四态如何变成可观测、可断言的标签
+- 6.3 `MaskAction` 如何变成可观测、可断言的标签（教程四态；starter 另有 `DISABLED`）
 - 6.4 动手写 `apply()` 的八步判定链
 - 6.5 / 6.6 判定顺序本身就是设计：便宜的判断放前面，幂等在缓存之前
 - 6.7 类型编码的解析与回落
@@ -239,11 +240,11 @@ mask-tutorial/
 ### [第 14 章 可逆脱敏：客服要看完整手机号怎么办](14-reversible-masking.md)
 
 - 14.1 展示脱敏与可逆脱敏是**两种语义，不要混用**
-- 14.2 AES-GCM 实现：为什么选 GCM、为什么 IV 必须随机、`Base64(IV + 密文)` 的封装格式
-- 14.3 `reversible = true` 只是一个「许可标记」——响应里永远是打码值
-- 14.4 还原接口的双重校验：Security 路径规则 + 运行时角色判定
-- 14.5 密钥管理的现实差距：项目当前是「补齐 / 截断到 32 字节」，生产该上 KMS 或 Vault
-- 14.6 为什么不能把密文直接吐给前端
+- 14.2 先把请求路径钉死：CS 首次仍打码 → 再请求指定字段 → **先鉴权再查库**
+- 14.3 先选线：没有限时票据需求时，AES 整段可以不做
+- 14.4 **线程 A · 不加 AES**：双重校验、`reversible` 白名单、只返回库中明文
+- 14.5 **线程 B · 加 AES**：两个完整场景（弹层 60 秒刷新、点拨外呼）；GCM 封的是票面不是手机号；Demo 只签发不核销
+- 14.6 对照真实实现
 
 ### [第 15 章 测试策略：怎么证明脱敏是对的](15-testing-strategy.md)
 
@@ -273,16 +274,16 @@ mask-tutorial/
 - 17.5 线程池导致的角色错乱
 - 17.6 生产环境残留了 `header-role-enabled: true`
 - 17.7 MyBatis TypeHandler 让所有字符串都被打码
-- 17.8 **成品代码现存的几个可改进点**（留给读者的进阶练习）：缓存命中未单独打点、未知 code 会无界写入规则表、`ADDRESS` 类型在 starter 里没有默认策略、`@Sensitive` 混用了 Jackson 2 与 Jackson 3 两套注解包
+- 17.8 **成品代码现存的几个可改进点**（留给读者的进阶练习）：缓存命中未单独打点、未知 code 会无界写入规则表、自定义 code 未注册策略时静默回落 `CUSTOM`、`@Sensitive` 混用了 Jackson 2 与 Jackson 3 两套注解包
 
 ### [第 18 章 复盘：为什么这个 starter 长这样](18-starter-design-review.md)
 
-- 18.1 依赖边界：`annotation` / `strategy` / `engine` 零框架依赖，通道依赖全部 `optional`
+- 18.1 依赖边界：通道 + Caffeine + Micrometer 均为 `optional`；内核只强制 Boot；引擎只认三个窄接口
 - 18.2 三个条件注解的分工：`@ConditionalOnClass` / `@ConditionalOnBean` / `@ConditionalOnMissingBean`
 - 18.3 `AutoConfiguration.imports` 与自动配置的装载顺序
 - 18.4 静态桥模式：什么时候是必要的折中，什么时候是坏味道
 - 18.5 移植到自己项目的检查清单
-- 18.6 如果重新设计，我会改哪三个地方
+- 18.6 原先要重做的三处已经落地；还剩 Map 视图 / 可逆名单 / 自定义 code 告警
 
 ## 附录
 
@@ -328,6 +329,11 @@ mask-tutorial/
 | MyBatis 结果映射时序 | 11.1 |
 | AOP 环绕通知与对象递归遍历 | 12.2 |
 | 三层防线 | 13.2 |
+| 展示通道 vs 还原通道（无线程 B） | 14.2 |
+| 线程 A：鉴权后查库 | 14.4 |
+| 场景一：查看票 60 秒刷新 | 14.5.1 |
+| 场景二：点拨外呼，浏览器不拿号 | 14.5.2 |
+| 可选依赖与自动配置装载顺序 | 18.1 / 18.3 |
 
 ## 写作进度
 
@@ -335,7 +341,7 @@ mask-tutorial/
 - [x] 第一批：第 1~3 章（认知 + 跑起来）
 - [x] 第二批：第 4~8 章（引擎内核 + `mask-tutorial/` 第 4~8 章代码，160 个测试全绿）
 - [x] 第三批：第 9~13 章（四通道 + 协同）
-- [ ] 第四批：第 14~18 章 + 四个附录
+- [x] 第四批：第 14~18 章 + 四个附录（`mask-tutorial` 第 14 章 AES / 还原服务）
 
 ## 参考资料
 
