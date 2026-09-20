@@ -21,10 +21,13 @@ public class MaskEngine {
 
     private final MaskSettings settings;
     private final MaskStrategyRegistry registry;
+    /** 可选；未配置 Caffeine 时为 NO_OP。 */
     private final MaskResultCache cache;
     private final AlreadyMaskedDetector alreadyMaskedDetector;
+    /** 可选；未配置 Micrometer 时为 NO_OP。 */
     private final MaskRecorder recorder;
 
+    /** 组装四通道共用的脱敏流水线：旁路 → 策略 → 幂等 → 缓存 → 打码。 */
     public MaskEngine(MaskSettings settings,
                       MaskStrategyRegistry registry,
                       MaskResultCache cache,
@@ -82,6 +85,7 @@ public class MaskEngine {
         }
     }
 
+    /** 统一写指标并返回业务结果，不改变 apply 的返回值语义。 */
     private String record(String result, String typeCode, MaskRole role, MaskAction action, long startNanos) {
         recorder.record(typeCode, role, action, Duration.ofNanos(System.nanoTime() - startNanos));
         return result;

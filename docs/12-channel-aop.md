@@ -104,12 +104,12 @@ void mutatesInPlace() {
 
 Walker 要处理四类节点：
 
-| 节点 | 做法 |
-| --- | --- |
-| Bean | 反射字段；有 `@Sensitive` 且是 String 就 `field.set`；否则递归 |
-| `Collection` | 遍历元素 |
-| 数组 | 按下标遍历 |
-| `Map` | 键在 `map-keys` 里的字符串值就地 `entry.setValue`；值再递归 |
+| 节点           | 做法                                               |
+| ------------ | ------------------------------------------------ |
+| Bean         | 反射字段；有 `@Sensitive` 且是 String 就 `field.set`；否则递归 |
+| `Collection` | 遍历元素                                             |
+| 数组           | 按下标遍历                                            |
+| `Map`        | 键在 `map-keys` 里的字符串值就地 `entry.setValue`；值再递归     |
 
 `List<String>` 字段即使标了 `@Sensitive` 也不会打码——注解在 List 上，元素是 String，Walker 对 String 直接 skip。要打码的是「Bean 里的 String 字段」或「Map 里按键名」。这是和 Jackson 的差异：Jackson 递归的是序列化树，字段注解在嵌套 Bean 上仍然生效；Walker 同样能进嵌套 Bean，但对 `List<String>` 无能为力。
 
@@ -180,12 +180,12 @@ JSON 看起来「没出事」，因为 `keepMask` 对已打码的手机号再套
 
 ## 12.5 优缺点
 
-| | |
-| --- | --- |
-| 优点 | 不依赖 HTTP；复用 `@Sensitive`；嵌套 Bean / 父类 / 循环引用都处理了 |
-| 缺点 | 改内存；反射有成本；`List<String>` 不打码；默认关；和 Jackson 同时开要靠第 13 章 |
-| 适用 | RPC、消息、定时任务、没有 Jackson 出口的服务 |
-| 不适用 | 典型 Web API（用第 9 章）；还要在返回后用明文做业务 |
+|     |                                                        |
+| --- | ------------------------------------------------------ |
+| 优点  | 不依赖 HTTP；复用 `@Sensitive`；嵌套 Bean / 父类 / 循环引用都处理了       |
+| 缺点  | 改内存；反射有成本；`List<String>` 不打码；默认关；和 Jackson 同时开要靠第 13 章 |
+| 适用  | RPC、消息、定时任务、没有 Jackson 出口的服务                           |
+| 不适用 | 典型 Web API（用第 9 章）；还要在返回后用明文做业务                        |
 
 ---
 
@@ -201,32 +201,15 @@ mvn -f mask-tutorial/pom.xml test "-Dtest=SensitiveObjectWalkerTest,SensitiveMet
 
 ## 12.7 对照真实实现
 
-| 方面 | 你的 `ch12` | `mask-starter` | 评价 |
-| --- | --- | --- | --- |
-| 切面 / Walker 结构 | 相同 | 相同 | — |
-| Collection 与 skip 的顺序 | **先 Collection/Map，再 skip** | **先 skip**，`java.util.List` 会被整棵跳过 | **教程修了真实项目的漏脱** |
-| `IdentityHashMap` | 有 | 有 | — |
-| 父类字段 | 有 | 有 | — |
-| 切面依赖注入 | 有，外加 `ChannelProperties` | 从 `MaskingProperties.getChannels()` 读 | — |
+| 方面                    | 你的 `ch12`                   | `mask-starter`                        | 评价  |
+| --------------------- | --------------------------- | ------------------------------------- | --- |
+| 切面 / Walker 结构        | 相同                          | 相同                                    | —   |
+| Collection 与 skip 的顺序 | **先 Collection/Map，再 skip** | 相同                                    | —   |
+| `IdentityHashMap`     | 有                           | 有                                     | —   |
+| 父类字段                  | 有                           | 有                                     | —   |
+| 切面依赖注入                | 有，外加 `ChannelProperties`    | 从 `MaskingProperties.getChannels()` 读 | —   |
 
-starter 的顺序问题：
 
-```38:47:mask-starter/src/main/java/com/learn/mask/aop/SensitiveObjectWalker.java
-        if (target == null || shouldSkip(target.getClass()) || seen.containsKey(target)) {
-            return;
-        }
-        seen.put(target, Boolean.TRUE);
-        if (target instanceof Collection<?> collection) {
-            for (Object item : collection) {
-                walk(item, seen);
-            }
-            return;
-        }
-```
-
-`ArrayList` 在 `shouldSkip` 就被 return 了，后面的 `instanceof Collection` 是死代码。返回 `List<UserDto>` 的 `@SensitiveMethod` 在 starter 里**不会脱敏**。教程测试如果按 starter 原顺序写，`nestedBeanAndListAreMasked` 的第二条会红——这正是我们改顺序的证据。
-
-第 17 章改进项应加上这一条。
 
 ---
 

@@ -2,7 +2,10 @@
 <included>
     <!-- 相当于将日志消息中 sensitiveMsg 键的文件值交于 SensitiveMessageConverter 进行转换。类似于原生的将 msg 的文本值由 MessageConverter 转换一样原理 -->
     <!-- 项目在 logback-spring.xml 中配置 pattern 如下，注意其中的 msg 替换成了 sensitiveMsg  -->
-    <!--  <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %sensitiveMsg%n</pattern> -->
+    <!--  SLF4J fluent API 的键值对请用 sensitiveKvp 替代 kvp，例如： -->
+    <!--  <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %sensitiveKvp %sensitiveMsg%n</pattern> -->
     <conversionRule conversionWord="sensitiveMsg"
                     class="com.learn.mask.logback.SensitiveMessageConverter"/>
+    <conversionRule conversionWord="sensitiveKvp"
+                    class="com.learn.mask.logback.SensitiveKeyValuePairConverter"/>
 </included>

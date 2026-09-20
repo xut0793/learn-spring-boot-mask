@@ -25,6 +25,7 @@ public class SensitiveMapSerializer extends ValueSerializer<Map<String, ?>> {
         this.maskContext = maskContext;
     }
 
+    /** 遍历 Map 键名，命中 {@code map-keys} 的 String 值走引擎，嵌套 Map/List 递归。 */
     @Override
     public void serialize(Map<String, ?> value, JsonGenerator gen, SerializationContext ctxt) {
         gen.writeStartObject();

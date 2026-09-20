@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 @EnableConfigurationProperties(MaskingProperties.class)
 public class MaskingCacheAutoConfiguration {
 
+    /** 明文→打码结果 Caffeine 缓存，键含规则版本。 */
     @Bean
     @ConditionalOnMissingBean(MaskResultCache.class)
     public MaskCache maskCache(MaskingProperties properties) {

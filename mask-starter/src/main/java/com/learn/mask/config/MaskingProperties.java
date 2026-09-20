@@ -21,14 +21,18 @@ import java.util.concurrent.atomic.AtomicLong;
 @ConfigurationProperties(prefix = "masking")
 public class MaskingProperties implements InitializingBean, MaskSettings {
 
+    /** 总开关；关闭后所有通道原样输出。 */
     private boolean enabled = true;
     private final Channels channels = new Channels();
+    /** 命中则 {@link com.learn.mask.context.MaskContext#shouldBypass()} 为 true，出口明文。 */
     private List<String> bypassRoles = new ArrayList<>(List.of("ADMIN"));
+    /** 命中则允许调用可逆还原接口。 */
     private List<String> unmaskRoles = new ArrayList<>(List.of("ADMIN", "CS"));
     private final Cache cache = new Cache();
     private final Debug debug = new Debug();
     private final Reversible reversible = new Reversible();
     private final RuleSet rules = new RuleSet();
+    /** Jackson / Map 出口：JSON 字段名 → 内置 {@link SensitiveType}。 */
     private Map<String, SensitiveType> mapKeys = defaultMapKeys();
     /**
      * 业务自定义类型的 Map 键映射，例如 {@code trackingNo: YOUR_TYPE}。
@@ -46,6 +50,7 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
         rebuildSnapshot();
     }
 
+    /** Spring 绑定完成后发布首版规则快照。 */
     @Override
     public void afterPropertiesSet() {
         rebuildSnapshot();
@@ -75,6 +80,7 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
         return snapshot;
     }
 
+    /** 是否开启脱敏总开关。 */
     public boolean isEnabled() {
         return enabled;
     }
@@ -139,6 +145,7 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
         return ruleVersion.get();
     }
 
+    /** 热更新后递增，使 {@link com.learn.mask.cache.MaskCache} 的复合键失效。 */
     public void bumpRuleVersion() {
         ruleVersion.incrementAndGet();
     }
@@ -193,6 +200,7 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
         private RuleConfig idCard = new RuleConfig(6, 4);
         private RuleConfig bankCard = new RuleConfig(4, 4);
         private RuleConfig email = new RuleConfig(1, 0);
+        /** {@link SensitiveType#CUSTOM} 及未单独列出的类型的默认规则。 */
         private RuleConfig custom = new RuleConfig(1, 1);
         /** 业务自定义类型规则，键为策略编码，与 {@code MaskStrategy#code()} 对应。 */
         private Map<String, RuleConfig> extras = new LinkedHashMap<>();
@@ -265,6 +273,7 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
         private boolean logback = true;
         private boolean aop = false;
         private boolean mybatis = false;
+        /** 为 true 时 Jackson 与 AOP/MyBatis 同时开启会在启动阶段失败。 */
         private boolean strict = false;
 
         public boolean isJackson() {
@@ -311,7 +320,9 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
     /** 明文到脱敏结果的本地缓存。 */
     public static class Cache {
         private boolean enabled = false;
+        /** Caffeine 最大条目数。 */
         private long maxSize = 10_000;
+        /** 访问后过期时间（分钟）。 */
         private long expireAfterAccessMinutes = 10;
 
         public boolean isEnabled() {
@@ -342,6 +353,7 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
     /** 用请求头覆盖角色，仅建议在联调时打开。 */
     public static class Debug {
         private boolean headerRoleEnabled = false;
+        /** 与 {@link HeaderRoleFilter} 读取的请求头名一致。 */
         private String headerName = "X-User-Role";
 
         public boolean isHeaderRoleEnabled() {
@@ -364,7 +376,9 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
     /** AES-GCM 可逆脱敏密钥。接口仍输出星号，还原接口用令牌换明文。 */
     public static class Reversible {
         private boolean enabled = true;
+        /** AES 密钥，UTF-8 长度须为 16 或 32 字节。 */
         private String secretKey = "demo-key-not-for-production-use!";
+        /** 允许签发还原票据的字段名（大小写不敏感）。 */
         private List<String> fields = new ArrayList<>(List.of("phone", "idCard", "identityCard"));
 
         public boolean isEnabled() {
@@ -391,6 +405,7 @@ public class MaskingProperties implements InitializingBean, MaskSettings {
             this.fields = fields == null ? new ArrayList<>() : fields;
         }
 
+        /** 字段是否在可逆白名单内。 */
         public boolean allows(String field) {
             if (field == null || fields == null || fields.isEmpty()) {
                 return false;

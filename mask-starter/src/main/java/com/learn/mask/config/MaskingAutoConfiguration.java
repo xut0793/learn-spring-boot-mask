@@ -35,30 +35,35 @@ import java.util.List;
 @EnableConfigurationProperties(MaskingProperties.class)
 public class MaskingAutoConfiguration {
 
+    /** 内置手机号策略 Bean。 */
     @Bean
     @ConditionalOnMissingBean
     public PhoneMaskStrategy phoneMaskStrategy() {
         return new PhoneMaskStrategy();
     }
 
+    /** 内置身份证策略 Bean。 */
     @Bean
     @ConditionalOnMissingBean
     public IdCardMaskStrategy idCardMaskStrategy() {
         return new IdCardMaskStrategy();
     }
 
+    /** 内置银行卡策略 Bean。 */
     @Bean
     @ConditionalOnMissingBean
     public BankCardMaskStrategy bankCardMaskStrategy() {
         return new BankCardMaskStrategy();
     }
 
+    /** 内置邮箱策略 Bean。 */
     @Bean
     @ConditionalOnMissingBean
     public EmailMaskStrategy emailMaskStrategy() {
         return new EmailMaskStrategy();
     }
 
+    /** 内置自定义类型（保留前后缀）策略 Bean。 */
     @Bean
     @ConditionalOnMissingBean
     public CustomPatternMaskStrategy customPatternMaskStrategy() {
@@ -89,12 +94,14 @@ public class MaskingAutoConfiguration {
         return new MaskStrategyRegistry(new ArrayList<>(strategies));
     }
 
+    /** 幂等检测：避免对已打星字符串再次 mask。 */
     @Bean
     @ConditionalOnMissingBean
     public AlreadyMaskedDetector alreadyMaskedDetector() {
         return new AlreadyMaskedDetector();
     }
 
+    /**  classpath 无 Caffeine 时的空缓存实现。 */
     @Bean
     @ConditionalOnMissingBean(MaskResultCache.class)
     @ConditionalOnMissingClass("com.github.benmanes.caffeine.cache.Caffeine")
@@ -102,6 +109,7 @@ public class MaskingAutoConfiguration {
         return MaskResultCache.NO_OP;
     }
 
+    /** classpath 无 Micrometer 时的空指标实现。 */
     @Bean
     @ConditionalOnMissingBean(MaskRecorder.class)
     @ConditionalOnMissingClass("io.micrometer.core.instrument.MeterRegistry")
@@ -109,18 +117,21 @@ public class MaskingAutoConfiguration {
         return MaskRecorder.NO_OP;
     }
 
+    /** 请求级角色与旁路判断。 */
     @Bean
     @ConditionalOnMissingBean
     public MaskContext maskContext(MaskingProperties properties) {
         return new MaskContext(properties);
     }
 
+    /** 可逆字段 AES-GCM 加解密。 */
     @Bean
     @ConditionalOnMissingBean
     public ReversibleMasker reversibleMasker(MaskingProperties properties) {
         return new AesGcmReversibleMasker(properties);
     }
 
+    /** 需业务提供 {@link SensitiveFieldLookup} 才注册还原票据服务。 */
     @Bean
     @ConditionalOnBean(SensitiveFieldLookup.class)
     @ConditionalOnMissingBean
@@ -131,6 +142,7 @@ public class MaskingAutoConfiguration {
         return new UnmaskTicketService(masker, lookup, properties, maskContext);
     }
 
+    /** 四通道共用的脱敏入口。 */
     @Bean
     @ConditionalOnMissingBean
     public MaskEngine maskEngine(MaskingProperties properties,
@@ -141,6 +153,7 @@ public class MaskingAutoConfiguration {
         return new MaskEngine(properties, registry, cache, detector, recorder);
     }
 
+    /** 启动 bind / 关闭 unbind 静态桥。 */
     @Bean
     public MaskingSpringBridgeLifecycle maskingSpringBridgeLifecycle(MaskEngine engine,
                                                                     MaskingProperties properties,
@@ -148,6 +161,7 @@ public class MaskingAutoConfiguration {
         return new MaskingSpringBridgeLifecycle(engine, properties, maskContext);
     }
 
+    /** 启动时校验 Jackson 与 AOP/MyBatis 组合是否冲突。 */
     @Bean
     @ConditionalOnMissingBean
     public MaskingChannelValidator maskingChannelValidator(MaskingProperties properties) {

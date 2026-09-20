@@ -18,6 +18,7 @@ import java.util.Set;
  */
 public class SensitiveObjectWalker {
 
+    /** JDK / Jackson 等类型不再向下反射，避免扫完整对象图。 */
     private static final Set<String> SKIP_PACKAGES = Set.of("java.", "javax.", "jakarta.", "tools.jackson.", "com.fasterxml.");
 
     private final MaskEngine engine;
@@ -30,6 +31,7 @@ public class SensitiveObjectWalker {
         this.maskContext = maskContext;
     }
 
+    /** 就地改写 {@code target} 及其嵌套结构中的敏感字符串，返回同一引用。 */
     public Object mask(Object target) {
         walk(target, new IdentityHashMap<>());
         return target;

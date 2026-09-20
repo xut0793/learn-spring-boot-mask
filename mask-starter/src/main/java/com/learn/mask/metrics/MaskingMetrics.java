@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class MaskingMetrics implements MaskRecorder {
 
     private final MeterRegistry registry;
+    /** 按 type|role|result 缓存 Counter，避免重复 register。 */
     private final ConcurrentHashMap<String, Counter> invoke = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Timer> duration = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Counter> fail = new ConcurrentHashMap<>();
@@ -27,10 +28,13 @@ public class MaskingMetrics implements MaskRecorder {
         this.registry = registry;
     }
 
+    /** 按 {@link SensitiveType} 枚举名作为 type 标签记录。 */
     public void record(SensitiveType type, MaskRole role, MaskAction action, Duration duration) {
         record(type == null ? "unknown" : type.name(), role, action, duration);
     }
 
+    /** 递增 invoke 计数并记录 duration；FAIL/BYPASS/SKIP 另有独立 Counter。 */
+    @Override
     public void record(String typeCode, MaskRole role, MaskAction action, Duration elapsed) {
         String typeTag = (typeCode == null || typeCode.isBlank()) ? "unknown" : typeCode;
         String roleTag = role == null ? "unknown" : role.name();

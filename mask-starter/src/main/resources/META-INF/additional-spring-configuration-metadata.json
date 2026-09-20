@@ -52,7 +52,7 @@
     {
       "name": "masking.channels.logback",
       "type": "java.lang.Boolean",
-      "description": "Logback 日志内容脱敏（需配置 %sensitiveMsg）。",
+      "description": "Logback 日志内容脱敏（pattern 用 %sensitiveMsg 替代 %msg，fluent KVP 用 %sensitiveKvp 替代 %kvp）。",
       "defaultValue": true
     },
     {

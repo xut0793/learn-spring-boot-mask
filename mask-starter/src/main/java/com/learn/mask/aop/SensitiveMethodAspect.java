@@ -19,6 +19,7 @@ public class SensitiveMethodAspect {
     private final MaskContext maskContext;
     private final SensitiveObjectWalker walker;
 
+    /** 注入引擎、通道配置、角色上下文与对象遍历器。 */
     public SensitiveMethodAspect(MaskEngine engine,
                                  MaskingProperties properties,
                                  MaskContext maskContext,
@@ -29,6 +30,7 @@ public class SensitiveMethodAspect {
         this.walker = walker;
     }
 
+    /** 通道开启时对 String 或复杂对象返回值脱敏；关闭或 null 时直接返回。 */
     @Around("@annotation(sensitiveMethod)")
     public Object around(ProceedingJoinPoint joinPoint, SensitiveMethod sensitiveMethod) throws Throwable {
         Object result = joinPoint.proceed();

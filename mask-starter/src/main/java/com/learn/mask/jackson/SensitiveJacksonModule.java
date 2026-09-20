@@ -16,6 +16,7 @@ public final class SensitiveJacksonModule extends JacksonModule {
     private final MaskingProperties properties;
     private final MaskContext maskContext;
 
+    /** 构造时注入依赖，供 {@link #setupModule} 注册内省器。 */
     public SensitiveJacksonModule(MaskEngine engine,
                                   MaskingProperties properties,
                                   MaskContext maskContext) {
@@ -39,6 +40,7 @@ public final class SensitiveJacksonModule extends JacksonModule {
         return getModuleName();
     }
 
+    /** 向 Jackson 插入 {@link SensitiveAnnotationIntrospector}。 */
     @Override
     public void setupModule(SetupContext context) {
         context.insertAnnotationIntrospector(

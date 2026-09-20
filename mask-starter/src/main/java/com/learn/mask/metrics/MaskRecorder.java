@@ -10,6 +10,7 @@ import java.time.Duration;
  */
 public interface MaskRecorder {
 
+    /** 记录一次 {@link com.learn.mask.engine.MaskEngine#apply} 的结果与耗时。 */
     void record(String typeCode, MaskRole role, MaskAction action, Duration duration);
 
     MaskRecorder NO_OP = (typeCode, role, action, duration) -> {

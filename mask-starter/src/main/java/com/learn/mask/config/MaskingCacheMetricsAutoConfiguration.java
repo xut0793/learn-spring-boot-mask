@@ -18,6 +18,7 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnBean(MaskCache.class)
 public class MaskingCacheMetricsAutoConfiguration {
 
+    /** 暴露命中率、估算大小与驱逐次数 Gauge。 */
     @Bean
     public MeterBinder maskingCacheGauges(MaskCache cache) {
         return registry -> {

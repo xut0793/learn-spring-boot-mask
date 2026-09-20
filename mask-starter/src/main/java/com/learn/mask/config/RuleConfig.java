@@ -8,14 +8,19 @@ package com.learn.mask.config;
  */
 public class RuleConfig {
 
+    /** 为 false 时引擎对该类型旁路。 */
     private boolean enabled = true;
+    /** 保留明文前缀长度。 */
     private int keepPrefix = 1;
+    /** 保留明文后缀长度。 */
     private int keepSuffix = 1;
     private char maskChar = '*';
 
+    /** Spring Boot 宽松绑定用。 */
     public RuleConfig() {
     }
 
+    /** 内置类型在 {@link MaskingProperties.RuleSet} 中的默认前后缀。 */
     public RuleConfig(int keepPrefix, int keepSuffix) {
         this.keepPrefix = keepPrefix;
         this.keepSuffix = keepSuffix;

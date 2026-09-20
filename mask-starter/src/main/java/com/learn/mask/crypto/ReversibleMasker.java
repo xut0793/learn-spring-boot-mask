@@ -5,7 +5,9 @@ package com.learn.mask.crypto;
  */
 public interface ReversibleMasker {
 
+    /** 将票据载荷或类似短文本加密为 Base64 密文。 */
     String encrypt(String plainText);
 
+    /** 解密 {@link #encrypt(String)} 的输出。 */
     String decrypt(String cipherText);
 }

@@ -16,6 +16,7 @@ public class MaskCache implements MaskResultCache {
     private final MaskingProperties properties;
     private final Cache<String, String> cache;
 
+    /** 按 {@code masking.cache} 容量与 TTL 构建 Caffeine。 */
     public MaskCache(MaskingProperties properties) {
         this.properties = properties;
         this.cache = Caffeine.newBuilder()
@@ -29,6 +30,7 @@ public class MaskCache implements MaskResultCache {
         return get(type == null ? null : type.name(), raw);
     }
 
+    /** 缓存未启用或未命中时返回 {@code null}。 */
     public String get(String typeCode, String raw) {
         if (!properties.getCache().isEnabled() || raw == null) {
             return null;
@@ -40,6 +42,7 @@ public class MaskCache implements MaskResultCache {
         put(type == null ? null : type.name(), raw, masked);
     }
 
+    /** 写入打码结果；键为 {@code ruleVersion:typeCode:raw}。 */
     public void put(String typeCode, String raw, String masked) {
         if (!properties.getCache().isEnabled() || raw == null || masked == null) {
             return;
@@ -47,10 +50,12 @@ public class MaskCache implements MaskResultCache {
         cache.put(key(typeCode, raw), masked);
     }
 
+    /** 热更新后清空，避免旧规则下的打码结果被复用。 */
     public void invalidateAll() {
         cache.invalidateAll();
     }
 
+    /** 供 Micrometer Gauge 读取。 */
     public double hitRate() {
         return cache.stats().hitRate();
     }

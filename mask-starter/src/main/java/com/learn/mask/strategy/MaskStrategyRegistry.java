@@ -14,6 +14,7 @@ public class MaskStrategyRegistry {
 
     private final Map<String, MaskStrategy> strategies = new LinkedHashMap<>();
 
+    /** 按 Spring 收集到的全部 {@link MaskStrategy} Bean 顺序注册。 */
     public MaskStrategyRegistry(List<MaskStrategy> maskStrategies) {
         for (MaskStrategy strategy : maskStrategies) {
             register(strategy);
@@ -24,6 +25,7 @@ public class MaskStrategyRegistry {
         return get(type == null ? null : type.name());
     }
 
+    /** 未命中编码时回落 {@link SensitiveType#CUSTOM} 策略。 */
     public MaskStrategy get(String code) {
         MaskStrategy strategy = strategies.get(normalize(code));
         if (strategy != null) {
@@ -32,6 +34,7 @@ public class MaskStrategyRegistry {
         return strategies.get(SensitiveType.CUSTOM.name());
     }
 
+    /** 同编码后注册覆盖先注册。 */
     public void register(MaskStrategy strategy) {
         if (strategy == null) {
             return;

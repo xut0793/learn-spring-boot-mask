@@ -23,6 +23,7 @@ import org.springframework.core.Ordered;
 @ConditionalOnBean(MaskEngine.class)
 public class WebMaskingAutoConfiguration {
 
+    /** 联调时用请求头覆盖 {@link com.learn.mask.context.MaskRole}。 */
     @Bean
     @ConditionalOnMissingBean
     public FilterRegistrationBean<HeaderRoleFilter> headerRoleFilter(MaskingProperties properties) {
@@ -32,6 +33,7 @@ public class WebMaskingAutoConfiguration {
         return registration;
     }
 
+    /** {@code /api/admin/masking} 规则查询与热更新。 */
     @Bean
     @ConditionalOnMissingBean
     public MaskingReloadController maskingReloadController(MaskingProperties properties,

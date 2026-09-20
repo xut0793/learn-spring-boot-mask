@@ -37,6 +37,7 @@ public final class MaskUtils {
                 + raw.substring(len - suffix);
     }
 
+    /** 中间段是否已全为掩码字符，用于引擎幂等跳过。 */
     public static boolean alreadyKeepMasked(String raw, MaskRule rule) {
         if (isBlank(raw)) {
             return false;

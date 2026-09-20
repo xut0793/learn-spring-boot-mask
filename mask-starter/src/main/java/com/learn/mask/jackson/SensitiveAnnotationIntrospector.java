@@ -31,6 +31,7 @@ public final class SensitiveAnnotationIntrospector extends NopAnnotationIntrospe
         return Version.unknownVersion();
     }
 
+    /** 字段带 {@link Sensitive} 时返回绑定了类型与编码的 {@link SensitiveValueSerializer}。 */
     @Override
     public Object findSerializer(MapperConfig<?> config, Annotated am) {
         Sensitive sensitive = am.getAnnotation(Sensitive.class);

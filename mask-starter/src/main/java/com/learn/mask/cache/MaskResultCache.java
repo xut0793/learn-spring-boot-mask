@@ -8,6 +8,7 @@ public interface MaskResultCache {
     /** 未命中返回 null。 */
     String get(String typeCode, String raw);
 
+    /** 缓存一次 mask 结果；NO_OP 实现为空操作。 */
     void put(String typeCode, String raw, String masked);
 
     /** 规则变更后作废全部条目。 */

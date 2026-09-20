@@ -10,12 +10,14 @@ import org.springframework.beans.factory.DisposableBean;
  */
 public final class MaskingSpringBridgeLifecycle implements DisposableBean {
 
+    /** 构造即 {@link MaskingSpringBridge#bind}，保证 Converter 首次打日志前引擎已就绪。 */
     public MaskingSpringBridgeLifecycle(MaskEngine engine,
                                         MaskingProperties properties,
                                         MaskContext maskContext) {
         MaskingSpringBridge.bind(engine, properties, maskContext);
     }
 
+    /** 容器销毁时 {@link MaskingSpringBridge#unbind()}。 */
     @Override
     public void destroy() {
         MaskingSpringBridge.unbind();

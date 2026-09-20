@@ -36,6 +36,9 @@
 **路径 C · 查阅**
 直接看附录 A（配置项全表）、附录 B（接口速查）、附录 D（章节↔源码对照）。
 
+**路径 D · 把 starter 接到自己的新项目（约 30 分钟）**
+[第 19 章](19-starter-build-publish-and-integration.md) 构建/发布 → 最小 `pom` + `@Sensitive` → 按需开 Logback / AOP / MyBatis。
+
 ## 教程代码放在哪
 
 本仓库的 `mask-starter/` 和 `mask-demo/` 是**成品**，教程不修改它们一行代码。
@@ -284,6 +287,17 @@ mask-tutorial/
 - 18.4 静态桥模式：什么时候是必要的折中，什么时候是坏味道
 - 18.5 移植到自己项目的检查清单
 - 18.6 原先要重做的三处已经落地；还剩 Map 视图 / 可逆名单 / 自定义 code 告警
+
+### [第 19 章 mask-starter 构建、发布与全新项目接入](19-starter-build-publish-and-integration.md)
+
+- 19.1 坐标与 JDK / Boot / Jackson 版本对齐
+- 19.2 本仓库 `mvn test` / `install` 与 JAR 自检
+- 19.3 私服 `deploy`、本机 install、临时依赖方式
+- 19.4 新 Spring Boot 工程最小接入（Jackson 出口）
+- 19.5 各通道额外依赖与 Logback pattern
+- 19.6 与 `mask-demo` 对照
+- 19.7 接入检查清单
+- 19.8 接入阶段常见问题
 
 ## 附录
 

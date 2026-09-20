@@ -19,7 +19,9 @@ import java.sql.SQLException;
  */
 public class SensitiveTypeHandler extends BaseTypeHandler<String> {
 
+    /** 内置类型；自定义编码时固定为 {@link SensitiveType#CUSTOM}。 */
     private final SensitiveType type;
+    /** 归一化后的策略编码，传给 {@link MaskEngine#apply}。 */
     private final String code;
 
     public SensitiveTypeHandler() {
@@ -42,11 +44,13 @@ public class SensitiveTypeHandler extends BaseTypeHandler<String> {
         this.code = MaskingProperties.normalizeCode(code, this.type);
     }
 
+    /** 写入库时不脱敏，保持明文持久化。 */
     @Override
     public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType) throws SQLException {
         ps.setString(i, parameter);
     }
 
+    /** 从结果集按列名读出后脱敏。 */
     @Override
     public String getNullableResult(ResultSet rs, String columnName) throws SQLException {
         return mask(rs.getString(columnName));
@@ -62,6 +66,7 @@ public class SensitiveTypeHandler extends BaseTypeHandler<String> {
         return mask(cs.getString(columnIndex));
     }
 
+    /** 通道开启且引擎已 bind 时调用 {@link MaskEngine#apply}。 */
     private String mask(String raw) {
         if (raw == null) {
             return null;

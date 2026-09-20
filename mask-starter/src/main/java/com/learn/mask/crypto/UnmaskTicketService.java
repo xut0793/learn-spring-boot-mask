@@ -16,13 +16,16 @@ import java.util.List;
 public class UnmaskTicketService {
 
     private final ReversibleMasker masker;
+    /** 按 subjectId + field 读取库中明文。 */
     private final SensitiveFieldLookup store;
     private final MaskingProperties properties;
     private final MaskContext maskContext;
+    /** 票据有效期。 */
     private final Duration ttl;
     private final Clock clock;
     private final List<AuditEvent> audit = new ArrayList<>();
 
+    /** 生产环境默认 TTL 60 秒、系统 UTC 时钟。 */
     public UnmaskTicketService(ReversibleMasker masker,
                                SensitiveFieldLookup store,
                                MaskingProperties properties,
@@ -44,6 +47,7 @@ public class UnmaskTicketService {
         this.clock = clock;
     }
 
+    /** 授权后读取明文并签发 VIEW 用途令牌，供前端短时展示。 */
     public RevealResult revealForView(String subjectId, String field) {
         authorize(field);
         String value = store.read(subjectId, field);
@@ -53,6 +57,7 @@ public class UnmaskTicketService {
         return new RevealResult(field, value, token, expiresAt);
     }
 
+    /** 在令牌未过期且角色允许时，用同一 VIEW 令牌再次取明文。 */
     public RevealResult refreshView(String token) {
         UnmaskTicket ticket = open(token, TicketPurpose.VIEW);
         if (maskContext == null || !maskContext.canUnmask()) {
@@ -63,6 +68,7 @@ public class UnmaskTicketService {
         return new RevealResult(ticket.field(), value, token, ticket.expiresAt());
     }
 
+    /** 签发 DIAL 用途一次性令牌，不返回明文。 */
     public String issueDialToken(String subjectId, String field) {
         authorize(field);
         store.read(subjectId, field);
@@ -72,6 +78,7 @@ public class UnmaskTicketService {
         return token;
     }
 
+    /** 核销 DIAL 令牌并返回明文（例如跳转拨号）。 */
     public String redeemForDial(String token) {
         UnmaskTicket ticket = open(token, TicketPurpose.DIAL);
         String value = store.read(ticket.subjectId(), ticket.field());
@@ -79,6 +86,7 @@ public class UnmaskTicketService {
         return value;
     }
 
+    /** 本进程内累积的还原审计事件（演示用；生产应落库）。 */
     public List<AuditEvent> auditTrail() {
         return List.copyOf(audit);
     }

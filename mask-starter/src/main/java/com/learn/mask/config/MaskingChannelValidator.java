@@ -18,6 +18,7 @@ public class MaskingChannelValidator implements InitializingBean {
         this.properties = properties;
     }
 
+    /** 容器启动完成后检查通道组合、调试头与总开关。 */
     @Override
     public void afterPropertiesSet() {
         MaskingProperties.Channels channels = properties.getChannels();

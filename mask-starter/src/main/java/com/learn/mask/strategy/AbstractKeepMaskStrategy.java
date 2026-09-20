@@ -8,6 +8,7 @@ import com.learn.mask.support.MaskUtils;
  */
 public abstract class AbstractKeepMaskStrategy implements MaskStrategy {
 
+    /** 按规则的 keepPrefix/keepSuffix 中间打星。 */
     @Override
     public String mask(String raw, MaskRule rule) {
         if (MaskUtils.isBlank(raw) || rule == null || !rule.enabled()) {
@@ -16,6 +17,7 @@ public abstract class AbstractKeepMaskStrategy implements MaskStrategy {
         return MaskUtils.keepMask(raw, rule);
     }
 
+    /** 中间段是否已全为掩码字符。 */
     @Override
     public boolean alreadyMasked(String raw, MaskRule rule) {
         if (rule == null) {

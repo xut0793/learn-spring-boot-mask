@@ -18,6 +18,7 @@ import tools.jackson.databind.ValueSerializer;
 @ConditionalOnBean(MaskEngine.class)
 public class JacksonMaskingAutoConfiguration {
 
+    /** 向 Jackson 注册 {@link com.learn.mask.jackson.SensitiveAnnotationIntrospector}。 */
     @Bean
     @ConditionalOnMissingBean
     public SensitiveJacksonModule sensitiveJacksonModule(MaskEngine engine,

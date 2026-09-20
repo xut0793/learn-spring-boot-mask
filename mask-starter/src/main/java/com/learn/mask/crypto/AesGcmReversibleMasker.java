@@ -22,14 +22,17 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
     private final SecretKey secretKey;
     private final SecureRandom random = new SecureRandom();
 
+    /** 从 UTF-8 密钥字符串构造；长度非法时抛出 {@link IllegalStateException}。 */
     public AesGcmReversibleMasker(String secretKey) {
         this.secretKey = secretKeySpec(secretKey);
     }
 
+    /** 读取 {@code masking.reversible.secret-key}。 */
     public AesGcmReversibleMasker(com.learn.mask.config.MaskingProperties properties) {
         this(properties.getReversible().getSecretKey());
     }
 
+    /** 校验密钥长度并包装为 {@link SecretKeySpec}。 */
     static SecretKey secretKeySpec(String secretKey) {
         byte[] keyBytes = secretKey == null ? new byte[0] : secretKey.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length != 16 && keyBytes.length != 32) {
@@ -39,6 +42,7 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
         return new SecretKeySpec(keyBytes, "AES");
     }
 
+    /** 随机 IV + GCM 加密，输出 Base64(IV || ciphertext)。 */
     @Override
     public String encrypt(String plainText) {
         if (plainText == null) {
@@ -59,6 +63,7 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
         }
     }
 
+    /** 解析 Base64 并验签解密；格式或 MAC 错误时抛出 {@link IllegalStateException}。 */
     @Override
     public String decrypt(String cipherText) {
         if (cipherText == null) {

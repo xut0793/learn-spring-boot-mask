@@ -21,6 +21,7 @@ public class MaskingReloadService {
 
     private final MaskingProperties properties;
     private final MaskResultCache maskCache;
+    /** 串行化热更新，避免并发 reload 交叉写 RuleSet 与快照。 */
     private final Object reloadLock = new Object();
 
     public MaskingReloadService(MaskingProperties properties, MaskResultCache maskCache) {
@@ -28,6 +29,7 @@ public class MaskingReloadService {
         this.maskCache = maskCache;
     }
 
+    /** 返回当前开关、通道、规则与角色配置的 JSON 友好 Map。 */
     public Map<String, Object> current() {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("enabled", properties.isEnabled());
@@ -39,6 +41,7 @@ public class MaskingReloadService {
         return body;
     }
 
+    /** 应用补丁 → 重建快照 →  bump 版本 → 清空缓存；返回摘要状态。 */
     public Map<String, Object> reload(ReloadRequest request) {
         synchronized (reloadLock) {
             if (request != null) {

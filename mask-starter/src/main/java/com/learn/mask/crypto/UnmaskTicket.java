@@ -7,12 +7,15 @@ import java.time.Instant;
  */
 public record UnmaskTicket(String subjectId, String field, Instant expiresAt, TicketPurpose purpose) {
 
+    /** 字段分隔符，避免与常见 subjectId/field 字符冲突。 */
     private static final String SEP = "\u001f";
 
+    /** 序列化为加密前的明文载荷。 */
     public String serialize() {
         return subjectId + SEP + field + SEP + expiresAt.toEpochMilli() + SEP + purpose.name();
     }
 
+    /** 从 {@link #serialize()} 的结果解析；格式错误时抛出 {@link IllegalStateException}。 */
     public static UnmaskTicket parse(String raw) {
         if (raw == null) {
             throw new IllegalStateException("Ticket payload is blank");

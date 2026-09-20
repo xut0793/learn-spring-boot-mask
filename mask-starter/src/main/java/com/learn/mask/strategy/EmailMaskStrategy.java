@@ -14,6 +14,7 @@ public class EmailMaskStrategy implements MaskStrategy {
         return SensitiveType.EMAIL;
     }
 
+    /** 仅打星 {@code @} 前本地部分，域名保留。 */
     @Override
     public String mask(String raw, MaskRule rule) {
         if (MaskUtils.isBlank(raw) || rule == null || !rule.enabled()) {
@@ -34,6 +35,7 @@ public class EmailMaskStrategy implements MaskStrategy {
                 + domain;
     }
 
+    /** 无 {@code @} 时退化为通用 keep 形态检测。 */
     @Override
     public boolean alreadyMasked(String raw, MaskRule rule) {
         if (MaskUtils.isBlank(raw) || rule == null) {

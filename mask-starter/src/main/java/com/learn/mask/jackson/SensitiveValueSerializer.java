@@ -22,9 +22,12 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
     private final MaskingProperties properties;
     private final MaskContext maskContext;
     private final SensitiveType type;
+    /** 策略编码，与 {@link MaskEngine#apply(String, SensitiveType, String, MaskContext)} 一致。 */
     private final String code;
+    /** 为 true 时不脱敏，用于无法解析字段类型时的安全降级。 */
     private final boolean passthrough;
 
+    /** 无 Spring 注入时从 {@link MaskingSpringBridge} 解析依赖。 */
     public SensitiveValueSerializer() {
         this(MaskingSpringBridge.engine(), MaskingSpringBridge.properties(), MaskingSpringBridge.context(),
                 SensitiveType.CUSTOM, SensitiveType.CUSTOM.name(), false);
@@ -63,6 +66,7 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
         this.passthrough = passthrough;
     }
 
+    /** 按字段 {@link Sensitive} 或属性名 {@code map-keys} 绑定类型与编码。 */
     @Override
     public ValueSerializer<?> createContextual(SerializationContext ctxt, BeanProperty property) {
         if (property == null) {
@@ -100,6 +104,7 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
         return null;
     }
 
+    /** Jackson 写出前调用 {@link MaskEngine#apply}，通道关或未 bind 时按策略抛错或原样。 */
     @Override
     public void serialize(String value, JsonGenerator gen, SerializationContext ctxt) {
         if (value == null || passthrough) {

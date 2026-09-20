@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnBean(MaskEngine.class)
 public class AopMaskingAutoConfiguration {
 
+    /** 递归扫描 {@code @Sensitive} 字段并就地改写。 */
     @Bean
     @ConditionalOnMissingBean
     public SensitiveObjectWalker sensitiveObjectWalker(MaskEngine engine,
@@ -27,6 +28,7 @@ public class AopMaskingAutoConfiguration {
         return new SensitiveObjectWalker(engine, properties, maskContext);
     }
 
+    /** 拦截 {@code @SensitiveMethod}，对返回值脱敏。 */
     @Bean
     @ConditionalOnMissingBean
     public SensitiveMethodAspect sensitiveMethodAspect(MaskEngine engine,

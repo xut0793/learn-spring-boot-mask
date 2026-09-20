@@ -23,6 +23,7 @@ public class HeaderRoleFilter extends OncePerRequestFilter {
         this.properties = properties;
     }
 
+    /** 解析 {@code masking.debug.header-name}，写入 {@link MaskContext} 并在 finally 中清除。 */
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {

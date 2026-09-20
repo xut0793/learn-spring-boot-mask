@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 @ConditionalOnClass(MeterRegistry.class)
 public class MaskingMetricsAutoConfiguration {
 
+    /** 注册 masking.invoke / duration / fail 等指标。 */
     @Bean
     @ConditionalOnMissingBean(MaskRecorder.class)
     public MaskingMetrics maskingMetrics(ObjectProvider<MeterRegistry> meterRegistries) {

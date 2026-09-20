@@ -14,6 +14,7 @@ import java.util.Map;
 @JsonSerialize(using = SensitiveMapView.Serializer.class)
 public record SensitiveMapView(Map<String, Object> data) {
 
+    /** 委托 {@link SensitiveMapSerializer}，依赖静态桥取引擎。 */
     public static final class Serializer extends ValueSerializer<SensitiveMapView> {
         @Override
         public void serialize(SensitiveMapView value, JsonGenerator gen, SerializationContext ctxt) {

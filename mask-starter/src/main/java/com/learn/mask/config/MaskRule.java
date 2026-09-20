@@ -8,14 +8,17 @@ package com.learn.mask.config;
  */
 public record MaskRule(boolean enabled, int keepPrefix, int keepSuffix, char maskChar) {
 
+    /** 启用规则，掩码字符为 {@code *}。 */
     public static MaskRule of(int keepPrefix, int keepSuffix) {
         return new MaskRule(true, keepPrefix, keepSuffix, '*');
     }
 
+    /** 启用规则并指定掩码字符。 */
     public static MaskRule of(int keepPrefix, int keepSuffix, char maskChar) {
         return new MaskRule(true, keepPrefix, keepSuffix, maskChar);
     }
 
+    /** 关闭该类型的脱敏。 */
     public static MaskRule disabled() {
         return new MaskRule(false, 0, 0, '*');
     }
