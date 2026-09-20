@@ -73,6 +73,10 @@ public class SensitiveValueSerializer extends ValueSerializer<String> {
                                     ? annotation.type().name()
                                     : annotation.code()));
         }
+        // 注解未命中：用属性名查 masking.map-keys。认得出就 new 一份，
+        // CUSTOM 只占枚举位，真正进引擎的是 resolvedCode。
+        // 普通 DTO 几乎走不到——没 @Sensitive 时 Jackson 不会挂本序列化器；
+        // 留给全局注册 String 序列化器时用。
         MaskingProperties props = resolveProperties();
         if (props != null && property.getName() != null) {
             String resolvedCode = props.typeCodeOf(property.getName());

@@ -3,7 +3,15 @@
 > **本章目标**：把「接口永远打码」和「授权角色能再拿一次明文」拆开。先走**不加 AES** 的还原闭环；只有出现票据 / 限时再查这类需求，再走**加 AES** 的第二条线。
 > **前置知识**：第 5 章 `canUnmask()`，第 6 章 fail-loud，第 9 章 `@Sensitive`，第 11 章突变通道会毁掉库中原文。
 > **预计时长**：50 分钟。
-> **本章代码**：`mask-tutorial/src/main/java/com/learn/mask/tutorial/ch14/`
+> **本章代码**：`mask-tutorial/src/main/java/com/learn/mask/tutorial/ch14/`（按场景分包，见下表）
+
+| 场景 | 包（每包自包含，便于通读） | 入口类 |
+| --- | --- | --- |
+| 不加 AES，直接查库 | `ch14.immediatewithoutcrypto` | `UnmaskService` |
+| 加 AES，弹层 60 秒刷新 | `ch14.viewwithcrypto` | `ViewTicketService` |
+| 加 AES，点拨外呼 | `ch14.dialwithcrypto` | `DialTicketService` |
+
+每个带 AES 的包内都有：`InMemoryUserStore`（用户表）、`InMemoryTokenStore`（Map 模拟 Redis 存 token）、`AesGcmReversibleMasker`。
 
 ---
 
@@ -74,7 +82,7 @@ sequenceDiagram
 | 给不给看 | 角色 + 字段白名单 | 签发前相同。AES 保护的是**票面声明** |
 | 响应 | `{ field, value }` | 查看：`value + VIEW 票`；外呼：只有 `DIAL 票` |
 | 密钥 | 不需要 | 签发 / 核销 token |
-| 本章代码 | `UnmaskService.withoutCrypto()` | `UnmaskTicketService` |
+| 本章代码 | `immediatewithoutcrypto.UnmaskService` | `viewwithcrypto.ViewTicketService` + `dialwithcrypto.DialTicketService` |
 
 没有限时刷新、也没有「明文不能出浏览器」时，**线程 A 就够了**。  
 线程 B 不是把 A 换掉：签发前仍走 A 的鉴权；AES 让一张短时声明可以过网关、进外呼进程，而里面没有号码。
@@ -130,8 +138,8 @@ Jackson / AOP / MyBatis **都不读这个属性**。普通接口里仍然是 `13
 教程版 `@Sensitive` 没有这个属性（第 9 章为了少讲一个维度）。还原服务用**字段白名单**：
 
 ```java
-public static UnmaskService withoutCrypto() {
-    return new UnmaskService(null, Set.of("phone", "idCard"));
+public static UnmaskService create() {
+    return new UnmaskService(Set.of("phone", "idCard"), InMemoryUserStore.demo());
 }
 ```
 
@@ -144,15 +152,15 @@ MyBatis 若在查询时就把列打成星号，还原从同一条查询拿不到
 ### 14.4.3 动手写：只返回明文
 
 ```java
-public UnmaskResult unmask(MaskContext context, String field, String storedPlain) {
+public UnmaskResult unmask(MaskContext context, UnmaskRequest request) {
     if (context == null || !context.canUnmask()) {
         throw new UnmaskDeniedException("Current role cannot unmask");
     }
-    if (field == null || !reversibleFields.contains(field)) {
-        throw new UnmaskDeniedException("Field is not reversible: " + field);
+    if (request.field() == null || !reversibleFields.contains(request.field())) {
+        throw new UnmaskDeniedException("Field is not reversible: " + request.field());
     }
-    String token = masker == null ? null : masker.encrypt(storedPlain);
-    return new UnmaskResult(field, storedPlain, token);
+    String value = userStore.readField(request.userId(), request.field());
+    return new UnmaskResult(request.userId(), request.field(), value);
 }
 ```
 
@@ -187,7 +195,7 @@ flowchart TD
 ### 14.4.4 验证线程 A
 
 ```bash
-mvn -f mask-tutorial/pom.xml test "-Dtest=ReversibleMaskingTest$UnmaskServiceTest"
+mvn -f mask-tutorial/pom.xml test "-Dtest=com.learn.mask.tutorial.ch14.immediatewithoutcrypto.UnmaskServiceTest"
 ```
 
 CS 还原得到库中明文、USER 拒绝、email 不在白名单、ADMIN 可还原。`withoutCrypto` 那条 `token` 为 null。
@@ -207,9 +215,9 @@ curl -u cs:cs123 -H "Content-Type: application/json" \
 
 ## 14.5 线程 B：加 AES —— 签发**能核销**的限时票据
 
-`UnmaskService.demo(masker)` 只是把明文加密后挂在响应上，**没有人拿 token 再办事**。那解释不了「AES 有什么用」。
+`aes.legacy.StarterStyleUnmaskService`（与 Demo 对齐）只是把明文加密后挂在响应上，**没有人拿 token 再办事**。那解释不了「AES 有什么用」。
 
-有用的前提是：token 里装的不是手机号，而是一张**声明**（谁、哪一列、何时过期、作什么用），服务端能 `decrypt` 核销它。完整代码在 `UnmaskTicketService`。
+有用的前提是：token 里装的不是手机号，而是一张**声明**（谁、哪一列、何时过期、作什么用），服务端能 `decrypt` 核销它。完整代码在 `aes.view.ViewTicketService` 与 `aes.dial.DialTicketService`。
 
 先否定三件它**不做**的事：
 
@@ -234,7 +242,7 @@ curl -u cs:cs123 -H "Content-Type: application/json" \
 ```mermaid
 sequenceDiagram
   participant CS as 客服浏览器
-  participant API as UnmaskTicketService
+  participant API as ViewTicketService
   participant AES as AES-GCM
   participant DB as 字段存储
   CS->>API: revealForView(user=1, phone)
@@ -343,7 +351,7 @@ UnmaskTicket parsed = UnmaskTicket.parse(masker.decrypt(token));
 
 核销后再 `store.read(ticket.subjectId(), ticket.field())`。库才是真相；票里不放号码，换号、销号立刻生效。
 
-`UnmaskService.demo(masker)` 那种 `encrypt(明文)` 是 Demo 的半成品，对照 14.6。场景一 / 二用 `UnmaskTicketService`。
+`StarterStyleUnmaskService` 那种 `encrypt(明文)` 是 Demo 的半成品，对照 14.6。场景一用 `ViewTicketService`，场景二用 `DialTicketService`。
 
 ### 14.5.4 随机 IV 的两个后果
 
@@ -399,7 +407,7 @@ System.arraycopy(keyBytes, 0, aesKey, 0, Math.min(keyBytes.length, 32));
 
 ### 14.5.6 对照：Demo 只签发，不核销
 
-`mask-demo` 的 `/api/unmask` 仍是 `encrypt(明文)` 后塞进 `token`，没有 `refresh` / `redeem`。starter 注释写「用 AES 令牌换回明文」，实现以 `UnmaskController` 为准。教程用 `UnmaskTicketService` 把核销补齐，用来回答「AES 干什么」。
+`mask-demo` 的 `/api/unmask` 仍是 `encrypt(明文)` 后塞进 `token`，没有 `refresh` / `redeem`。starter 注释写「用 AES 令牌换回明文」，实现以 `UnmaskController` 为准。教程用 `ViewTicketService` / `DialTicketService` 把核销补齐，用来回答「AES 干什么」。
 
 ### 14.5.7 为什么不能把密文直接吐给前端当「脱敏值」
 
@@ -421,7 +429,7 @@ System.arraycopy(keyBytes, 0, aesKey, 0, Math.min(keyBytes.length, 32));
 ### 14.5.8 验证线程 B
 
 ```bash
-mvn -f mask-tutorial/pom.xml test "-Dtest=ReversibleMaskingTest"
+mvn -f mask-tutorial/pom.xml test "-Dtest=com.learn.mask.tutorial.ch14.immediatewithoutcrypto.UnmaskServiceTest,com.learn.mask.tutorial.ch14.viewwithcrypto.ViewTicketServiceTest,com.learn.mask.tutorial.ch14.dialwithcrypto.DialTicketServiceTest"
 ```
 
 除开算法往返 / IV / 篡改，还应看到：
@@ -441,7 +449,7 @@ Demo 的 `token` 每次不同只证明「签发了」。要看 AES 真正办事�
 | 点 | 教程 `ch14` | `mask-starter` / `mask-demo` |
 | --- | --- | --- |
 | 线程 A：鉴权 + 查库 | `canUnmask()` + 字段白名单；`withoutCrypto()` 不签发 | Security `hasAnyRole` + `canUnmask()`，**无字段名单** |
-| 线程 B：AES | `UnmaskTicketService` 加密**票面**并核销 | `encrypt(明文)` 写入 `token`，**无核销** |
+| 线程 B：AES | `ViewTicketService` / `DialTicketService` 加密**票面**并核销 | `encrypt(明文)` 写入 `token`，**无核销** |
 | 核销 | `refreshView` / `redeemForDial`；过期、撤权、用途错都拒绝 | 无 |
 | 密钥 | 补 0 / 截断到 32 字节 | 相同，默认 `demo-key-not-for-prod-32b!!` |
 | `reversible` 注解 | 教程 `@Sensitive` 无此属性，用白名单 | 注解有，**UnmaskController 不读** |
@@ -464,7 +472,7 @@ Demo 的 `token` 每次不同只证明「签发了」。要看 AES 真正办事�
 - 展示打码和授权还原是两条通道。星号不可逆，明文来自数据库
 - **线程 A（默认）**：双重校验 → 字段白名单 → 查库返回 `value`。没有限时票据需求，到此为止
 - **线程 B（可选）**：AES 封的是限时声明（谁 / 哪列 / 何时过期 / VIEW 还是 DIAL），核销后再读库。场景：弹层 60 秒刷新、点拨外呼（浏览器不拿号）
-- Demo 的 `/api/unmask` 只签发、不核销，所以看不出 AES 的用处。教程用 `UnmaskTicketService` 把核销补上
+- Demo 的 `/api/unmask` 只签发、不核销，所以看不出 AES 的用处。教程用 `ViewTicketService` / `DialTicketService` 把核销补上
 - `reversible = true` 应限制「哪些字段能还」，不要指望它改变接口形态
 - 选了 B 才谈密钥：Demo 的补零 / 截断只适合教学；生产用 KMS/Vault，长度不对就启动失败
 - 密文不准当展示字段

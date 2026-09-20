@@ -56,7 +56,7 @@ mask-tutorial/
     ch11/ ...  # MyBatis 通道
     ch12/ ...  # AOP 通道
     ch13/ ...  # 通道开关与冲突校验
-    ch14/ ...  # 授权还原（线程 A）+ 可选 AES 凭证（线程 B）
+    ch14/immediatewithoutcrypto、viewwithcrypto、dialwithcrypto  # 三包各含完整场景代码
   src/test/java/com/learn/mask/tutorial/
     ch04/ ... ch14/                          # 各章验证用例 + 课后练习答案
 ```

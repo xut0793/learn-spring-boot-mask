@@ -12,7 +12,7 @@
 现在手上有两块零件：
 
 - 第 4 章：`MaskStrategyRegistry.get(code)` → 策略，`strategy.mask(raw, rule)` → 打码
-- 第 5 章：`MaskContext.shouldBypass()` → 要不要旁路
+- 第 5 章：`MaskContext.shouldBypass()` → 根据上下文中的角色，要不要旁路（不脱敏）
 
 四个通道各自把它们拼起来就行了，看起来不难：
 
@@ -720,15 +720,15 @@ verify(cache, never()).get(anyString(), anyString());
 
 `mask-starter` 已按本章方案落地：引擎只依赖三个窄接口，判定顺序与教程相同。
 
-| 方面 | 你的 `ch06` | `mask-starter` | 评价 |
-| --- | --- | --- | --- |
-| 配置依赖 | `MaskSettings` | 同左；`MaskingProperties` 实现该接口 | 测试可用替身，不必构造完整配置 |
-| 缓存依赖 | `MaskResultCache` | 同左；`MaskCache` 实现该接口，构造函数 `null` → `NO_OP` | 可不启动 Caffeine 测引擎 |
-| 指标依赖 | `MaskRecorder` | 同左；`MaskingMetrics` 实现该接口 | 同左 |
-| 空值判断 | `MaskUtils.isBlank(raw)` | 同左 | `isBlank` 已含 null |
-| 编码归一化 | `MaskStrategyRegistry.normalize` | `MaskStrategyRegistry.resolve`；`normalizeCode` 只做委托 | 只留一份 trim + 大写 |
-| 总开关 | 记 `BYPASS` | 单独的 `MaskAction.DISABLED`，启动和热更新打 error 日志 | starter 可观测性更强 |
-| 判定顺序 | 八步 | 八步，完全一致 | — |
+| 方面    | 你的 `ch06`                        | `mask-starter`                                      | 评价                |
+| ----- | -------------------------------- | --------------------------------------------------- | ----------------- |
+| 配置依赖  | `MaskSettings`                   | 同左；`MaskingProperties` 实现该接口                        | 测试可用替身，不必构造完整配置   |
+| 缓存依赖  | `MaskResultCache`                | 同左；`MaskCache` 实现该接口，构造函数 `null` → `NO_OP`          | 可不启动 Caffeine 测引擎 |
+| 指标依赖  | `MaskRecorder`                   | 同左；`MaskingMetrics` 实现该接口                           | 同左                |
+| 空值判断  | `MaskUtils.isBlank(raw)`         | 同左                                                  | `isBlank` 已含 null |
+| 编码归一化 | `MaskStrategyRegistry.normalize` | `MaskStrategyRegistry.resolve`；`normalizeCode` 只做委托 | 只留一份 trim + 大写    |
+| 总开关   | 记 `BYPASS`                       | 单独的 `MaskAction.DISABLED`，启动和热更新打 error 日志          | starter 可观测性更强    |
+| 判定顺序  | 八步                               | 八步，完全一致                                             | —                 |
 
 成品核心：
 

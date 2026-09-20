@@ -15,7 +15,7 @@
 | 11 | `ch11` TypeHandler | `mybatis/*`、`config/MybatisMaskingAutoConfiguration.java`（空）；Demo `mapper/UserMaskedMapper` | 教程 `ch11` |
 | 12 | `ch12` Method、Aspect、Walker | `annotation/SensitiveMethod.java`、`aop/*`、`config/AopMaskingAutoConfiguration.java`；Demo `AopUserController`、`loadForAop` | 教程 `ch12` |
 | 13 | `ch13` 通道开关与校验 | `config/MaskingChannelValidator.java`；Demo `application-*.yml` | 教程 ch13；starter `MaskingChannelValidatorTest` |
-| 14 | `ch14`：`UnmaskService`（A）+ `UnmaskTicketService`（B 核销） | `crypto/*`；Demo `UnmaskController` 只签发不核销 | 教程 `ReversibleMaskingTest`（含查看刷新 / 点拨）；starter 仅往返；Demo CS/USER 两条 |
+| 14 | `immediatewithoutcrypto` / `viewwithcrypto` / `dialwithcrypto`（三包各自完整） | `crypto/*`；Demo `UnmaskController` 只签发不核销 | `UnmaskServiceTest` / `ViewTicketServiceTest` / `DialTicketServiceTest`；starter 仅往返；Demo CS/USER 两条 |
 | 15 | 无新生产代码 | 上表全部 `src/test` | `mask-demo/.../MaskingApiTest.java` |
 | 16 | 无新生产代码 | `mask-demo/.../perf/MaskingSimulation.java`、`mask-demo/pom.xml` 的 `perf` profile | 不进 surefire |
 | 17 | 无 | 指向各章文件 + 17.8 表 | — |

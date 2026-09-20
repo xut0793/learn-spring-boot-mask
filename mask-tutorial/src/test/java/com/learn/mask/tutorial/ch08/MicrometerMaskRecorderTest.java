@@ -17,13 +17,13 @@ class MicrometerMaskRecorderTest {
     private final MeterRegistry registry = new SimpleMeterRegistry();
     private final MicrometerMaskRecorder recorder = new MicrometerMaskRecorder(registry);
 
-    /** java.time.Duration ?? ofMicros??????? */
+    /** java.time.Duration 没有 ofMicros，用纳秒换算。 */
     private static Duration micros(long value) {
         return Duration.ofNanos(value * 1_000);
     }
 
     @Test
-    @DisplayName("????????")
+    @DisplayName("三个标签都会打上")
     void recordsAllTags() {
         recorder.record("PHONE", MaskRole.USER, MaskAction.MASK, micros(20));
 
@@ -35,7 +35,7 @@ class MicrometerMaskRecorderTest {
     }
 
     @Test
-    @DisplayName("result ??????type ? role ????")
+    @DisplayName("result 标签是小写，type 和 role 保持大写")
     void resultTagIsLowercased() {
         recorder.record("PHONE", MaskRole.USER, MaskAction.SKIP_ALREADY_MASKED, micros(5));
 
@@ -43,12 +43,12 @@ class MicrometerMaskRecorderTest {
                 .tag("result", "skip_already_masked")
                 .counter().count()).isEqualTo(1);
         assertThat(registry.find("masking.invoke").tag("result", "SKIP_ALREADY_MASKED").counter())
-                .as("????? ?? ??? 3 ????????")
+                .as("大写查不到 —— 这是第 3 章实验里踩过的坑")
                 .isNull();
     }
 
     @Test
-    @DisplayName("???? Timer???? result ??")
+    @DisplayName("耗时记进 Timer，且不带 result 标签")
     void durationHasNoResultTag() {
         recorder.record("PHONE", MaskRole.USER, MaskAction.MASK, micros(40));
         recorder.record("PHONE", MaskRole.USER, MaskAction.BYPASS, micros(10));
@@ -57,14 +57,14 @@ class MicrometerMaskRecorderTest {
                 .tag("type", "PHONE")
                 .tag("role", "USER")
                 .timer().count())
-                .as("??????????????")
+                .as("不同动作的耗时累加到同一条上")
                 .isEqualTo(2);
         assertThat(registry.get("masking.duration").timer()
                 .totalTime(TimeUnit.MICROSECONDS)).isEqualTo(50);
     }
 
     @Test
-    @DisplayName("FAIL ??????????")
+    @DisplayName("FAIL 走独立计数器，不记旁路")
     void failHasDedicatedCounter() {
         recorder.record("PHONE", MaskRole.USER, MaskAction.FAIL, micros(30));
 
@@ -74,18 +74,18 @@ class MicrometerMaskRecorderTest {
     }
 
     @Test
-    @DisplayName("BYPASS ????????????????")
+    @DisplayName("BYPASS 只按角色打标，不同类型累加到一条")
     void bypassCounterIsTaggedByRoleOnly() {
         recorder.record("PHONE", MaskRole.ADMIN, MaskAction.BYPASS, micros(3));
         recorder.record("EMAIL", MaskRole.ADMIN, MaskAction.BYPASS, micros(3));
 
         assertThat(registry.get("masking.bypass").tag("role", "ADMIN").counter().count())
-                .as("????????????????????????")
+                .as("不同类型的旁路按同一角色累加到一条")
                 .isEqualTo(2);
     }
 
     @Test
-    @DisplayName("SKIP_ALREADY_MASKED ?????????? ?? ????????")
+    @DisplayName("SKIP_ALREADY_MASKED 走独立计数器，只按 type 打标")
     void skippedCounterIsTaggedByType() {
         recorder.record("PHONE", MaskRole.USER, MaskAction.SKIP_ALREADY_MASKED, micros(4));
 
@@ -93,7 +93,7 @@ class MicrometerMaskRecorderTest {
     }
 
     @Test
-    @DisplayName("null ???????????")
+    @DisplayName("null 标签值不会让打点抛异常")
     void nullTagsFallBackToUnknown() {
         recorder.record(null, null, null, micros(1));
 
@@ -105,7 +105,7 @@ class MicrometerMaskRecorderTest {
     }
 
     @Test
-    @DisplayName("????????? unknown")
+    @DisplayName("空白类型编码回落为 unknown")
     void blankTypeCodeFallsBack() {
         recorder.record("   ", MaskRole.USER, MaskAction.MASK, micros(1));
 
@@ -113,7 +113,7 @@ class MicrometerMaskRecorderTest {
     }
 
     @Test
-    @DisplayName("??????????????????????????")
+    @DisplayName("相同标签重复打点会累加，不会新建多条序列")
     void repeatedRecordsAccumulate() {
         for (int i = 0; i < 100; i++) {
             recorder.record("PHONE", MaskRole.USER, MaskAction.MASK, micros(10));

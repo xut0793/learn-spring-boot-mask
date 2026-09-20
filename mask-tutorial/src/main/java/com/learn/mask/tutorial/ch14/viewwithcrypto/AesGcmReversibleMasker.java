@@ -1,4 +1,4 @@
-package com.learn.mask.tutorial.ch14;
+package com.learn.mask.tutorial.ch14.viewwithcrypto;
 
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
@@ -11,26 +11,37 @@ import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
- * AES-GCM 可逆实现。密文格式 {@code Base64(IV + ciphertext + tag)}。
+ * AES-GCM 封装票面声明（非手机号本身）。
  * <p>
- * IV 每次随机 12 字节，所以同一明文每次加密结果都不同——这也是它<strong>不能进脱敏缓存</strong>的原因。
- * 密钥处理与 starter 一致：不足 32 字节补 0、超过则截断。第 14.5 节会批评这个做法。
+ *  wire 格式：{@code Base64(12 字节 IV || ciphertext || 16 字节 GCM tag)}。
+ * 随机 IV 导致同一票面两次加密结果不同，故 token 不能进第 8 章脱敏缓存。
  */
-public class AesGcmReversibleMasker implements ReversibleMasker {
+public class AesGcmReversibleMasker {
 
-    static final String TRANSFORMATION = "AES/GCM/NoPadding";
-    static final int GCM_IV_LENGTH = 12;
-    static final int GCM_TAG_BITS = 128;
-    static final int AES_KEY_LENGTH = 32;
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_IV_LENGTH = 12;
+    private static final int GCM_TAG_BITS = 128;
+    private static final int AES_KEY_LENGTH = 32;
 
+    /** 密钥与 enabled 开关来源。 */
     private final ReversibleOptions options;
+
+    /** 每次加密生成新 IV。 */
     private final SecureRandom random = new SecureRandom();
 
+    /**
+     * @param options 密钥配置，内部会 {@link ReversibleOptions#sanitized()}
+     */
     public AesGcmReversibleMasker(ReversibleOptions options) {
         this.options = options.sanitized();
     }
 
-    @Override
+    /**
+     * 加密 UTF-8 票面字符串。
+     *
+     * @param plainText 序列化后的 {@code userId + field + expires + purpose}
+     * @return Base64 token，{@code null} 入参返回 {@code null}
+     */
     public String encrypt(String plainText) {
         if (plainText == null) {
             return null;
@@ -46,11 +57,16 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
             buffer.put(cipherBytes);
             return Base64.getEncoder().encodeToString(buffer.array());
         } catch (GeneralSecurityException ex) {
-            throw new IllegalStateException("Failed to encrypt reversible field", ex);
+            throw new IllegalStateException("Failed to encrypt ticket", ex);
         }
     }
 
-    @Override
+    /**
+     * 解密 token 得到票面明文；篡改或密钥错误时 fail-loud。
+     *
+     * @param cipherText Base64 token
+     * @return 票面字符串
+     */
     public String decrypt(String cipherText) {
         if (cipherText == null) {
             return null;
@@ -58,7 +74,7 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
         try {
             byte[] decoded = Base64.getDecoder().decode(cipherText);
             if (decoded.length <= GCM_IV_LENGTH) {
-                throw new IllegalStateException("Failed to decrypt reversible field");
+                throw new IllegalStateException("Failed to decrypt ticket");
             }
             ByteBuffer buffer = ByteBuffer.wrap(decoded);
             byte[] iv = new byte[GCM_IV_LENGTH];
@@ -69,15 +85,14 @@ public class AesGcmReversibleMasker implements ReversibleMasker {
             cipher.init(Cipher.DECRYPT_MODE, secretKey(), new GCMParameterSpec(GCM_TAG_BITS, iv));
             return new String(cipher.doFinal(cipherBytes), StandardCharsets.UTF_8);
         } catch (GeneralSecurityException | IllegalArgumentException ex) {
-            throw new IllegalStateException("Failed to decrypt reversible field", ex);
+            throw new IllegalStateException("Failed to decrypt ticket", ex);
         }
     }
 
     /**
-     * 与 starter 相同：按 UTF-8 字节补 0 或截断到 32。
-     * 短密钥有效熵被稀释，长密钥被静默丢掉——生产不该这样。
+     * 暴露派生后的 32 字节 AES 密钥，供单测验证「短钥补零」行为（与 starter 一致）。
      */
-    byte[] rawKeyBytes() {
+    public byte[] rawKeyBytes() {
         byte[] keyBytes = options.secretKey().getBytes(StandardCharsets.UTF_8);
         byte[] aesKey = new byte[AES_KEY_LENGTH];
         System.arraycopy(keyBytes, 0, aesKey, 0, Math.min(keyBytes.length, AES_KEY_LENGTH));

@@ -1,11 +1,10 @@
-package com.learn.mask.tutorial.ch14;
+package com.learn.mask.tutorial.ch14.dialwithcrypto;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 
-/** 测试用：把「现在」拨到过期之后。 */
 final class MutableClock extends Clock {
 
     private Instant instant;
